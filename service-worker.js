@@ -1,16 +1,24 @@
 "use strict";
 
-const CACHE_NAME = "quiet-camera-v3";
+const CACHE_NAME = "quiet-camera-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./privacy.html",
   "./styles.css",
+  "./fullscreen.css",
+  "./camera-enhancements.css",
   "./storage.js",
   "./core.js",
   "./photo.js",
   "./video.js",
   "./ui.js",
+  "./fullscreen.js",
+  "./camera-enhancements-core.js",
+  "./camera-devices.js",
+  "./camera-controls.js",
+  "./camera-capture.js",
+  "./camera-enhancements.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
 ];
