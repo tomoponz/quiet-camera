@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d10">
-  <meta name="description" content="音を立てたくない場面で使える、端末内処理のシンプルなカメラPWAです。">
+  <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
   <title>Quiet Camera</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
@@ -20,6 +20,11 @@
       <button id="installButton" class="text-button" type="button" hidden>インストール</button>
     </header>
 
+    <nav class="mode-switcher" aria-label="撮影モード">
+      <button id="photoModeButton" class="mode-button active" type="button" aria-pressed="true">写真</button>
+      <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false">動画</button>
+    </nav>
+
     <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像">
       <video id="cameraVideo" autoplay muted playsinline></video>
       <canvas id="captureCanvas" hidden></canvas>
@@ -28,12 +33,19 @@
         <span></span><span></span><span></span><span></span>
       </div>
 
+      <div id="focusRing" class="focus-ring" aria-hidden="true"></div>
       <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
       <div id="countdown" class="countdown" aria-live="assertive"></div>
 
+      <div id="recordingBadge" class="recording-badge" hidden aria-live="polite">
+        <span class="recording-dot"></span>
+        <span id="recordingTime">00:00</span>
+        <span id="recordingAudioState">音声なし</span>
+      </div>
+
       <div id="permissionPanel" class="permission-panel">
         <p class="permission-title">カメラを起動します</p>
-        <p class="permission-copy">映像や写真はサーバーへ送信しません。音声と位置情報も取得しません。</p>
+        <p id="permissionCopy" class="permission-copy">写真と映像はサーバーへ送信しません。マイクは動画設定で有効にした場合だけ使用します。</p>
         <button id="startButton" class="primary-button" type="button">カメラを許可</button>
       </div>
 
@@ -43,21 +55,87 @@
         </button>
         <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー">OFF</button>
         <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率">4:3</button>
+        <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg>
+        </button>
         <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg>
         </button>
       </div>
 
+      <div id="zoomControl" class="zoom-control" hidden>
+        <label for="zoomRange">ズーム</label>
+        <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1">
+        <output id="zoomValue" for="zoomRange">1.0×</output>
+      </div>
+
       <div class="status-bar">
         <span id="cameraStatus">待機中</span>
-        <span>JPEG</span>
+        <span id="mediaStatus">JPEG</span>
       </div>
     </section>
 
+    <section class="settings-panel" aria-label="保存と録画の設定">
+      <label id="photoFormatField" class="setting-field">
+        <span>写真形式</span>
+        <select id="photoFormatSelect">
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/png">PNG</option>
+          <option value="image/webp">WebP</option>
+          <option value="application/pdf">PDF</option>
+        </select>
+      </label>
+
+      <label id="photoQualityField" class="setting-field">
+        <span>写真品質</span>
+        <select id="photoQualitySelect">
+          <option value="0.82">標準</option>
+          <option value="0.92" selected>高画質</option>
+          <option value="0.98">最高</option>
+        </select>
+      </label>
+
+      <label id="microphoneField" class="setting-field" hidden>
+        <span>マイク</span>
+        <select id="microphoneSelect">
+          <option value="off" selected>OFF</option>
+          <option value="on">ON</option>
+        </select>
+      </label>
+
+      <label id="videoResolutionField" class="setting-field" hidden>
+        <span>動画サイズ</span>
+        <select id="videoResolutionSelect">
+          <option value="auto" selected>自動</option>
+          <option value="720">720p</option>
+          <option value="1080">1080p</option>
+        </select>
+      </label>
+
+      <label id="videoFrameRateField" class="setting-field" hidden>
+        <span>FPS</span>
+        <select id="videoFrameRateSelect">
+          <option value="auto" selected>自動</option>
+          <option value="30">30</option>
+          <option value="60">60</option>
+        </select>
+      </label>
+
+      <label id="videoQualityField" class="setting-field" hidden>
+        <span>動画品質</span>
+        <select id="videoQualitySelect">
+          <option value="economy">軽量</option>
+          <option value="standard" selected>標準</option>
+          <option value="high">高画質</option>
+        </select>
+      </label>
+    </section>
+
     <section class="bottom-controls" aria-label="撮影操作">
-      <button id="previewButton" class="preview-button" type="button" aria-label="直前の写真を見る" disabled>
+      <button id="previewButton" class="preview-button" type="button" aria-label="直前の撮影結果を見る" disabled>
         <span id="previewPlaceholder">履歴</span>
         <img id="previewThumbnail" alt="" hidden>
+        <span id="videoThumbnailMark" class="video-thumbnail-mark" hidden>▶</span>
       </button>
 
       <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled>
@@ -67,20 +145,25 @@
       <button id="privacyButton" class="round-text-button" type="button" aria-label="プライバシーと注意事項">i</button>
     </section>
 
-    <p class="camera-note">人物や私有地を撮影するときは、相手の同意と撮影場所のルールを守ってください。</p>
+    <p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。</p>
   </main>
 
   <dialog id="reviewDialog" class="sheet-dialog">
     <div class="dialog-header">
-      <h2>撮影結果</h2>
+      <div>
+        <h2 id="reviewTitle">撮影結果</h2>
+        <p id="reviewMeta" class="review-meta"></p>
+      </div>
       <button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button>
     </div>
-    <img id="reviewImage" class="review-image" alt="撮影した写真">
-    <div class="dialog-actions">
+    <img id="reviewImage" class="review-media" alt="撮影した写真" hidden>
+    <video id="reviewVideo" class="review-media" controls playsinline hidden></video>
+    <div class="dialog-actions three-actions">
+      <button id="deleteButton" class="danger-button" type="button">削除</button>
       <button id="downloadButton" class="secondary-button" type="button">端末に保存</button>
       <button id="shareButton" class="primary-button" type="button">共有</button>
     </div>
-    <p class="dialog-help">iPhoneでは「共有」から“画像を保存”を選ぶと確実です。</p>
+    <p class="dialog-help">iPhoneでは「共有」から“画像を保存”または“ファイルに保存”を選ぶ方法が確実です。</p>
   </dialog>
 
   <dialog id="privacyDialog" class="sheet-dialog info-dialog">
@@ -89,16 +172,20 @@
       <button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button>
     </div>
     <ul>
-      <li>写真はブラウザ内で生成され、サーバーへ送信されません。</li>
-      <li>マイク、位置情報、連絡先にはアクセスしません。</li>
-      <li>撮影画像は、自分で保存または共有するまでアプリ内だけに保持されます。</li>
-      <li>端末やブラウザによって、画質・レンズ切替・保存方法が異なります。</li>
+      <li>写真と動画はブラウザ内で生成され、サーバーへ送信されません。</li>
+      <li>マイクは動画設定でONにした場合だけ許可を求めます。</li>
+      <li>位置情報、連絡先、アカウント情報にはアクセスしません。</li>
+      <li>撮影結果は、自分で保存または共有するまで一時的にブラウザ内へ保持されます。</li>
+      <li>ピント、ズーム、ライト、形式、動画コーデックは端末とブラウザの対応状況により異なります。</li>
     </ul>
-    <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影には使用しないでください。</p>
+    <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影や録画には使用しないでください。</p>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./app.js" defer></script>
+  <script src="./core.js" defer></script>
+  <script src="./photo.js" defer></script>
+  <script src="./video.js" defer></script>
+  <script src="./ui.js" defer></script>
 </body>
 </html>
