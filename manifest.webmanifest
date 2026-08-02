@@ -1,0 +1,27 @@
+{
+  "name": "Quiet Camera",
+  "short_name": "Quiet Camera",
+  "description": "音を立てたくない場面で使える、端末内処理のシンプルなカメラPWA。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070809",
+  "theme_color": "#0b0d10",
+  "categories": ["photo", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
