@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="description" content="音を立てたくない場面で使える、端末内処理のシンプルなカメラPWAです。">
+  <title>Quiet Camera</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app" aria-label="Quiet Camera">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">LOCAL-ONLY CAMERA</p>
+        <h1>Quiet Camera</h1>
+      </div>
+      <button id="installButton" class="text-button" type="button" hidden>インストール</button>
+    </header>
+
+    <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像">
+      <video id="cameraVideo" autoplay muted playsinline></video>
+      <canvas id="captureCanvas" hidden></canvas>
+
+      <div id="gridOverlay" class="grid-overlay" hidden aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
+      <div id="countdown" class="countdown" aria-live="assertive"></div>
+
+      <div id="permissionPanel" class="permission-panel">
+        <p class="permission-title">カメラを起動します</p>
+        <p class="permission-copy">映像や写真はサーバーへ送信しません。音声と位置情報も取得しません。</p>
+        <button id="startButton" class="primary-button" type="button">カメラを許可</button>
+      </div>
+
+      <div class="camera-top-controls" aria-label="撮影設定">
+        <button id="switchButton" class="icon-button" type="button" aria-label="前後カメラを切り替える" title="カメラ切替">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10l-1.5-2M17 17H7l1.5 2M20 8a8 8 0 0 1-1 8M4 16a8 8 0 0 1 1-8"/></svg>
+        </button>
+        <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー">OFF</button>
+        <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率">4:3</button>
+        <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg>
+        </button>
+      </div>
+
+      <div class="status-bar">
+        <span id="cameraStatus">待機中</span>
+        <span>JPEG</span>
+      </div>
+    </section>
+
+    <section class="bottom-controls" aria-label="撮影操作">
+      <button id="previewButton" class="preview-button" type="button" aria-label="直前の写真を見る" disabled>
+        <span id="previewPlaceholder">履歴</span>
+        <img id="previewThumbnail" alt="" hidden>
+      </button>
+
+      <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled>
+        <span></span>
+      </button>
+
+      <button id="privacyButton" class="round-text-button" type="button" aria-label="プライバシーと注意事項">i</button>
+    </section>
+
+    <p class="camera-note">人物や私有地を撮影するときは、相手の同意と撮影場所のルールを守ってください。</p>
+  </main>
+
+  <dialog id="reviewDialog" class="sheet-dialog">
+    <div class="dialog-header">
+      <h2>撮影結果</h2>
+      <button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button>
+    </div>
+    <img id="reviewImage" class="review-image" alt="撮影した写真">
+    <div class="dialog-actions">
+      <button id="downloadButton" class="secondary-button" type="button">端末に保存</button>
+      <button id="shareButton" class="primary-button" type="button">共有</button>
+    </div>
+    <p class="dialog-help">iPhoneでは「共有」から“画像を保存”を選ぶと確実です。</p>
+  </dialog>
+
+  <dialog id="privacyDialog" class="sheet-dialog info-dialog">
+    <div class="dialog-header">
+      <h2>プライバシー</h2>
+      <button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button>
+    </div>
+    <ul>
+      <li>写真はブラウザ内で生成され、サーバーへ送信されません。</li>
+      <li>マイク、位置情報、連絡先にはアクセスしません。</li>
+      <li>撮影画像は、自分で保存または共有するまでアプリ内だけに保持されます。</li>
+      <li>端末やブラウザによって、画質・レンズ切替・保存方法が異なります。</li>
+    </ul>
+    <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影には使用しないでください。</p>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
