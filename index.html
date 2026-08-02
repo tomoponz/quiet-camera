@@ -4,11 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
   <title>Quiet Camera</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./fullscreen.css">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
@@ -49,6 +53,12 @@
         <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率">4:3</button>
         <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg></button>
         <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg></button>
+        <button id="fullscreenButton" class="icon-button fullscreen-button" type="button" aria-pressed="false" aria-label="全画面モード" title="全画面">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="fullscreen-enter-icon" d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>
+            <path class="fullscreen-exit-icon" d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>
+          </svg>
+        </button>
       </div>
 
       <div id="zoomControl" class="zoom-control" hidden><label for="zoomRange">ズーム</label><input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1"><output id="zoomValue" for="zoomRange">1.0×</output></div>
@@ -100,6 +110,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./storage.js" defer></script><script src="./core.js" defer></script><script src="./photo.js" defer></script><script src="./video.js" defer></script><script src="./ui.js" defer></script>
+  <script src="./storage.js" defer></script><script src="./core.js" defer></script><script src="./photo.js" defer></script><script src="./video.js" defer></script><script src="./ui.js" defer></script><script src="./fullscreen.js" defer></script>
 </body>
 </html>
