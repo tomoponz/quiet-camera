@@ -1,0 +1,38 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: |
+          node --check app-v3.js
+          node --check utils-v3.js
+          node --check storage-v3.js
+          node --check core-v3.js
+          node --check photo-v3.js
+          node --check video-v3.js
+          node --check ui-v3.js
+          node --check service-worker.js
+      - name: Unit tests
+        run: node tests/utils-v3.test.cjs
+      - name: Verify references
+        run: |
+          grep -q 'src="./app-v3.js"' index.html
+          grep -q 'href="./app-v3.css"' index.html
+          for file in utils-v3.js storage-v3.js core-v3.js photo-v3.js video-v3.js ui-v3.js; do
+            grep -q "$file" app-v3.js
+            grep -q "$file" service-worker.js
+          done
