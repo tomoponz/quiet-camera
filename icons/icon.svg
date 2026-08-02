@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Quiet Camera icon</title>
+  <rect width="512" height="512" rx="112" fill="#08090b"/>
+  <rect x="82" y="154" width="348" height="224" rx="72" fill="#f5f5f5"/>
+  <rect x="188" y="108" width="136" height="72" rx="22" fill="#f5f5f5"/>
+  <circle cx="256" cy="266" r="86" fill="#08090b"/>
+  <circle cx="256" cy="266" r="38" fill="#f5f5f5"/>
+</svg>
