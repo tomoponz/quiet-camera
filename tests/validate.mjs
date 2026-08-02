@@ -52,7 +52,7 @@ for (const feature of [
   "enumerateDevices",
   "devicechange",
   "selectedDeviceId",
-  "getSettings()",
+  "getSettings",
   "focusDistance",
   "exposureCompensation",
   "getVisibleTargetRatio",
