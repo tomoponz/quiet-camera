@@ -4,16 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
   <title>Quiet Camera</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./fullscreen.css">
+  <link rel="stylesheet" href="./camera-enhancements.css">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
     <header class="app-header">
-      <div><p class="eyebrow">LOCAL-ONLY CAMERA</p><h1>Quiet Camera</h1></div>
+      <div>
+        <p class="eyebrow">LOCAL-ONLY CAMERA</p>
+        <h1>Quiet Camera</h1>
+      </div>
       <div class="header-actions">
         <button id="updateButton" class="text-button update-button" type="button" hidden>更新</button>
         <button id="installButton" class="text-button" type="button" hidden>インストール</button>
@@ -28,13 +36,17 @@
     <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像">
       <video id="cameraVideo" autoplay muted playsinline></video>
       <canvas id="captureCanvas" hidden></canvas>
+
       <div id="gridOverlay" class="grid-overlay" hidden aria-hidden="true"><span></span><span></span><span></span><span></span></div>
       <div id="focusRing" class="focus-ring" aria-hidden="true"></div>
       <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
       <div id="countdown" class="countdown" aria-live="assertive"></div>
 
       <div id="recordingBadge" class="recording-badge" hidden aria-live="polite">
-        <span class="recording-dot"></span><span id="recordingTime">00:00</span><span id="recordingSize">0 MB</span><span id="recordingAudioState">音声なし</span>
+        <span class="recording-dot"></span>
+        <span id="recordingTime">00:00</span>
+        <span id="recordingSize">0 MB</span>
+        <span id="recordingAudioState">音声なし</span>
       </div>
 
       <div id="permissionPanel" class="permission-panel">
@@ -44,62 +56,146 @@
       </div>
 
       <div class="camera-top-controls" aria-label="撮影設定">
-        <button id="switchButton" class="icon-button" type="button" aria-label="前後カメラを切り替える" title="カメラ切替"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10l-1.5-2M17 17H7l1.5 2M20 8a8 8 0 0 1-1 8M4 16a8 8 0 0 1 1-8"/></svg></button>
+        <button id="switchButton" class="icon-button" type="button" aria-label="前後カメラを切り替える" title="カメラ切替">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10l-1.5-2M17 17H7l1.5 2M20 8a8 8 0 0 1-1 8M4 16a8 8 0 0 1 1-8"/></svg>
+        </button>
         <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー">OFF</button>
         <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率">4:3</button>
-        <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg></button>
-        <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg></button>
+        <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg>
+        </button>
+        <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg>
+        </button>
+        <button id="fullscreenButton" class="icon-button fullscreen-button" type="button" aria-pressed="false" aria-label="全画面モード" title="全画面">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="fullscreen-enter-icon" d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>
+            <path class="fullscreen-exit-icon" d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>
+          </svg>
+        </button>
       </div>
 
-      <div id="zoomControl" class="zoom-control" hidden><label for="zoomRange">ズーム</label><input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1"><output id="zoomValue" for="zoomRange">1.0×</output></div>
-      <div id="exposureControl" class="exposure-control" hidden><label for="exposureRange">明るさ</label><input id="exposureRange" type="range" min="0" max="0" step="0.1" value="0"><output id="exposureValue" for="exposureRange">0.0</output></div>
-      <div class="status-bar"><span id="cameraStatus">待機中</span><span id="mediaStatus">JPEG</span></div>
+      <div id="zoomControl" class="zoom-control" hidden>
+        <label for="zoomRange">ズーム</label>
+        <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1">
+        <output id="zoomValue" for="zoomRange">1.0×</output>
+      </div>
+
+      <div id="exposureControl" class="exposure-control" hidden>
+        <label for="exposureRange">明るさ</label>
+        <input id="exposureRange" type="range" min="0" max="0" step="0.1" value="0">
+        <output id="exposureValue" for="exposureRange">0.0</output>
+      </div>
+
+      <div class="status-bar">
+        <span id="cameraStatus">待機中</span>
+        <span id="mediaStatus">JPEG</span>
+      </div>
     </section>
 
-    <section class="settings-panel" aria-label="保存と録画の設定">
+    <div id="settingsDock">
+    <section id="settingsPanel" class="settings-panel" aria-label="保存と録画の設定">
+      <label id="cameraSourceField" class="setting-field camera-source-field" hidden><span>カメラ</span><select id="cameraSourceSelect"><option value="">自動選択</option></select></label>
+      <div id="manualFocusField" class="setting-field range-setting" hidden>
+        <span>ピント</span>
+        <div class="range-setting-controls"><input id="manualFocusRange" type="range" min="0" max="0" step="1" value="0"><output id="manualFocusValue" for="manualFocusRange">自動</output><button id="focusResetButton" class="mini-button" type="button">自動に戻す</button></div>
+      </div>
+      <div id="exposureSettingField" class="setting-field range-setting" hidden>
+        <span>明るさ</span>
+        <div class="range-setting-controls"><input id="exposureIndexRange" type="range" min="0" max="0" step="1" value="0"><output id="exposureIndexValue" for="exposureIndexRange">0.0EV</output><button id="exposureResetButton" class="mini-button" type="button">0EV</button></div>
+      </div>
       <label id="photoFormatField" class="setting-field"><span>写真形式</span><select id="photoFormatSelect"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option><option value="application/pdf">PDF</option></select></label>
       <label id="photoQualityField" class="setting-field"><span>写真品質</span><select id="photoQualitySelect"><option value="0.82">標準</option><option value="0.92" selected>高画質</option><option value="0.98">最高</option></select></label>
       <label id="autoReviewField" class="setting-field"><span>撮影後</span><select id="autoReviewSelect"><option value="always" selected>確認する</option><option value="brief">2秒表示</option><option value="never">表示しない</option></select></label>
       <label id="selfieMirrorField" class="setting-field"><span>自撮り保存</span><select id="selfieMirrorSelect"><option value="mirrored" selected>鏡像のまま</option><option value="natural">左右反転しない</option></select></label>
+
       <label id="microphoneField" class="setting-field" hidden><span>マイク</span><select id="microphoneSelect"><option value="off" selected>OFF</option><option value="on">ON</option></select></label>
       <label id="videoResolutionField" class="setting-field" hidden><span>動画サイズ</span><select id="videoResolutionSelect"><option value="auto" selected>自動</option><option value="720">720p</option><option value="1080">1080p</option></select></label>
       <label id="videoFrameRateField" class="setting-field" hidden><span>FPS</span><select id="videoFrameRateSelect"><option value="auto" selected>自動</option><option value="30">30</option><option value="60">60</option></select></label>
       <label id="videoQualityField" class="setting-field" hidden><span>動画品質</span><select id="videoQualitySelect"><option value="economy">軽量</option><option value="standard" selected>標準</option><option value="high">高画質</option></select></label>
       <label id="recordingLimitField" class="setting-field" hidden><span>録画上限</span><select id="recordingLimitSelect"><option value="5">5分</option><option value="10" selected>10分</option><option value="20">20分</option></select></label>
+      <button id="privacyButton" class="secondary-button settings-privacy-button" type="button">プライバシーと注意事項</button>
     </section>
+    </div>
 
     <section class="bottom-controls" aria-label="撮影操作">
-      <button id="galleryButton" class="preview-button" type="button" aria-label="撮影履歴を見る"><span id="galleryPlaceholder">履歴</span><img id="previewThumbnail" alt="直前の撮影結果" hidden><span id="videoThumbnailMark" class="video-thumbnail-mark" hidden>▶</span><span id="galleryCount" class="gallery-count" hidden>0</span></button>
+      <button id="galleryButton" class="preview-button" type="button" aria-label="撮影履歴を見る">
+        <span id="galleryPlaceholder">履歴</span>
+        <img id="previewThumbnail" alt="直前の撮影結果" hidden>
+        <span id="videoThumbnailMark" class="video-thumbnail-mark" hidden>▶</span>
+        <span id="galleryCount" class="gallery-count" hidden>0</span>
+      </button>
       <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled><span></span></button>
-      <button id="privacyButton" class="round-text-button" type="button" aria-label="プライバシーと注意事項">i</button>
+      <button id="settingsButton" class="round-text-button settings-button" type="button" aria-label="設定を開く" title="設定">⚙</button>
     </section>
     <p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。</p>
   </main>
 
   <dialog id="reviewDialog" class="sheet-dialog review-dialog">
     <div class="review-layout">
-      <div class="review-viewer"><img id="reviewImage" class="review-media" alt="撮影した写真" hidden><video id="reviewVideo" class="review-media" controls playsinline preload="metadata" hidden></video></div>
+      <div class="review-viewer">
+        <img id="reviewImage" class="review-media" alt="撮影した写真" hidden>
+        <video id="reviewVideo" class="review-media" controls playsinline preload="metadata" hidden></video>
+      </div>
       <aside class="review-sidebar">
-        <div class="dialog-header"><div><h2 id="reviewTitle">撮影結果</h2><p id="reviewMeta" class="review-meta"></p></div><button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
-        <div class="dialog-actions review-actions"><button id="deleteButton" class="danger-button" type="button">削除</button><button id="downloadButton" class="secondary-button" type="button">端末に保存</button><button id="shareButton" class="primary-button" type="button">共有</button></div>
+        <div class="dialog-header">
+          <div><h2 id="reviewTitle">撮影結果</h2><p id="reviewMeta" class="review-meta"></p></div>
+          <button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="dialog-actions review-actions">
+          <button id="deleteButton" class="danger-button" type="button">削除</button>
+          <button id="downloadButton" class="secondary-button" type="button">端末に保存</button>
+          <button id="shareButton" class="primary-button" type="button">共有</button>
+        </div>
         <p class="dialog-help">iPhoneでは共有メニューから「画像を保存」または「ファイルに保存」を選んでください。</p>
       </aside>
     </div>
   </dialog>
 
   <dialog id="galleryDialog" class="sheet-dialog gallery-dialog">
-    <div class="dialog-header gallery-header"><div><h2>撮影履歴</h2><p id="gallerySummary" class="review-meta">0件</p></div><button id="closeGalleryButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
-    <div class="gallery-toolbar"><button id="selectAllButton" class="secondary-button compact-button" type="button">すべて選択</button><button id="exportPdfButton" class="secondary-button compact-button" type="button" disabled>選択写真をPDF</button><button id="deleteSelectedButton" class="danger-button compact-button" type="button" disabled>選択削除</button></div>
-    <div id="galleryGrid" class="gallery-grid" aria-live="polite"></div><p id="galleryEmpty" class="gallery-empty">撮影すると、ここに端末内の履歴が表示されます。</p>
+    <div class="dialog-header gallery-header">
+      <div><h2>撮影履歴</h2><p id="gallerySummary" class="review-meta">0件</p></div>
+      <button id="closeGalleryButton" class="close-button" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div class="gallery-toolbar">
+      <button id="selectAllButton" class="secondary-button compact-button" type="button">すべて選択</button>
+      <button id="exportPdfButton" class="secondary-button compact-button" type="button" disabled>選択写真をPDF</button>
+      <button id="deleteSelectedButton" class="danger-button compact-button" type="button" disabled>選択削除</button>
+    </div>
+    <div id="galleryGrid" class="gallery-grid" aria-live="polite"></div>
+    <p id="galleryEmpty" class="gallery-empty">撮影すると、ここに端末内の履歴が表示されます。</p>
+  </dialog>
+
+  <dialog id="settingsDialog" class="sheet-dialog settings-dialog">
+    <div class="dialog-header"><div><h2>カメラ設定</h2><p class="review-meta">利用できる機能だけ表示します。</p></div><button id="closeSettingsButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
+    <div id="settingsSheetBody"></div>
   </dialog>
 
   <dialog id="privacyDialog" class="sheet-dialog info-dialog">
     <div class="dialog-header"><h2>プライバシー</h2><button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
-    <ul><li>写真・動画・音声はブラウザ内で処理され、自動送信されません。</li><li>撮影結果は端末内のブラウザ保存領域へ一時保存され、次回起動時に復元されます。</li><li>マイクは動画設定でONにした場合だけ許可を求めます。</li><li>位置情報、連絡先、アカウント情報にはアクセスしません。</li><li>ピント、ズーム、ライト、露出、動画形式は端末とブラウザの対応状況により異なります。</li></ul>
-    <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影や録画には使用しないでください。</p><p class="privacy-link"><a href="./privacy.html">プライバシーポリシー全文</a></p>
+    <ul>
+      <li>写真・動画・音声はブラウザ内で処理され、自動送信されません。</li>
+      <li>撮影結果は端末内のブラウザ保存領域へ一時保存され、次回起動時に復元されます。</li>
+      <li>マイクは動画設定でONにした場合だけ許可を求めます。</li>
+      <li>位置情報、連絡先、アカウント情報にはアクセスしません。</li>
+      <li>ピント、ズーム、ライト、露出、動画形式は端末とブラウザの対応状況により異なります。</li>
+    </ul>
+    <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影や録画には使用しないでください。</p>
+    <p class="privacy-link"><a href="./privacy.html">プライバシーポリシー全文</a></p>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./storage.js" defer></script><script src="./core.js" defer></script><script src="./photo.js" defer></script><script src="./video.js" defer></script><script src="./ui.js" defer></script>
+
+  <script src="./storage.js" defer></script>
+  <script src="./core.js" defer></script>
+  <script src="./photo.js" defer></script>
+  <script src="./video.js" defer></script>
+  <script src="./ui.js" defer></script>
+  <script src="./fullscreen.js" defer></script>
+  <script src="./camera-enhancements-core.js" defer></script>
+  <script src="./camera-devices.js" defer></script>
+  <script src="./camera-controls.js" defer></script>
+  <script src="./camera-capture.js" defer></script>
+  <script src="./camera-enhancements.js" defer></script>
 </body>
 </html>
