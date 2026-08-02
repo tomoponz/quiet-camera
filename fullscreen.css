@@ -1,0 +1,119 @@
+.fullscreen-button {
+  flex: 0 0 auto;
+}
+
+.fullscreen-button .fullscreen-exit-icon {
+  display: none;
+}
+
+.fullscreen-button[aria-pressed="true"] {
+  background: #ffffff;
+  color: #050607;
+}
+
+.fullscreen-button[aria-pressed="true"] .fullscreen-enter-icon {
+  display: none;
+}
+
+.fullscreen-button[aria-pressed="true"] .fullscreen-exit-icon {
+  display: inline;
+}
+
+html.immersive-mode,
+html.immersive-mode body {
+  width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  background: #000000;
+}
+
+html.immersive-mode .app {
+  width: 100%;
+  max-width: none;
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+html.immersive-mode .app-header,
+html.immersive-mode .mode-switcher,
+html.immersive-mode .settings-panel,
+html.immersive-mode .camera-note {
+  display: none !important;
+}
+
+html.immersive-mode .camera-stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  max-height: none;
+  aspect-ratio: auto !important;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html.immersive-mode .permission-panel {
+  padding-top: max(28px, env(safe-area-inset-top));
+  padding-bottom: max(120px, env(safe-area-inset-bottom));
+}
+
+html.immersive-mode .camera-top-controls {
+  top: max(10px, env(safe-area-inset-top));
+  left: auto;
+  right: max(10px, env(safe-area-inset-right));
+  justify-content: flex-end;
+}
+
+html.immersive-mode .camera-top-controls > :not(#fullscreenButton) {
+  display: none !important;
+}
+
+html.immersive-mode .recording-badge {
+  top: max(14px, env(safe-area-inset-top));
+}
+
+html.immersive-mode .status-bar {
+  bottom: calc(102px + env(safe-area-inset-bottom));
+}
+
+html.immersive-mode .zoom-control {
+  bottom: calc(128px + env(safe-area-inset-bottom));
+}
+
+html.immersive-mode .exposure-control {
+  bottom: calc(172px + env(safe-area-inset-bottom));
+}
+
+html.immersive-mode .bottom-controls {
+  position: fixed;
+  z-index: 12;
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  width: min(100%, 760px);
+  min-height: calc(94px + env(safe-area-inset-bottom));
+  padding: 8px max(18px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  transform: translateX(-50%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0));
+}
+
+html.immersive-mode .sheet-dialog[open] {
+  z-index: 30;
+}
+
+@media (max-width: 480px) {
+  html.immersive-mode .recording-badge {
+    max-width: calc(100% - 120px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html.immersive-mode .zoom-control,
+  html.immersive-mode .exposure-control {
+    width: min(88%, 350px);
+  }
+}
