@@ -57,11 +57,24 @@ for (const feature of [
   "exposureCompensation",
   "getVisibleTargetRatio",
   "NotReadableError",
+  "deviceCameraInput",
+  "importDeviceCameraFile",
+  "setAttribute(\"capture\"",
+  "端末カメラから取り込み",
 ]) {
   if (!enhancementJs.includes(feature)) throw new Error(`Missing camera enhancement: ${feature}`);
 }
 if (!enhancementJs.includes('hasOwnProperty.call(state.capabilities, "pointsOfInterest")')) {
   throw new Error("Point focus must be capability-gated");
+}
+if (!enhancementJs.includes('deviceCameraInput.accept = mode === "video" ? "video/*" : "image/*"')) {
+  throw new Error("Device camera input must follow the selected photo/video mode");
+}
+if (!enhancementJs.includes("if (resumeWebCameraAfterCapture) stopCamera()")) {
+  throw new Error("The web camera must be released before launching the device camera");
+}
+if (!enhancementJs.includes("previewBlob") || !enhancementJs.includes("readVideoMetadata")) {
+  throw new Error("Device camera results must be integrated with the existing media history");
 }
 
 const enhancementCss = fs.readFileSync(path.join(root, "camera-enhancements.css"), "utf8");

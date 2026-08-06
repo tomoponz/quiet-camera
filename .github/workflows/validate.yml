@@ -17,9 +17,20 @@ jobs:
         with:
           node-version: 22
       - run: node tests/validate.mjs
-      - run: node --check storage.js
-      - run: node --check core.js
-      - run: node --check photo.js
-      - run: node --check video.js
-      - run: node --check ui.js
-      - run: node --check service-worker.js
+      - name: Check JavaScript syntax
+        run: |
+          for file in \
+            storage.js \
+            core.js \
+            photo.js \
+            video.js \
+            ui.js \
+            fullscreen.js \
+            camera-enhancements-core.js \
+            camera-devices.js \
+            camera-controls.js \
+            camera-capture.js \
+            camera-enhancements.js \
+            service-worker.js; do
+            node --check "$file"
+          done
