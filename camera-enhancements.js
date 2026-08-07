@@ -3,20 +3,38 @@
 (() => {
   const Q = window.QuietCameraEnhancements;
 
+  function closeSettings() {
+    if (elements.settingsDialog.open) elements.settingsDialog.close();
+    elements.settingsButton.setAttribute("aria-expanded", "false");
+  }
+
   function placeSettingsPanel() {
     if (Q.MOBILE_QUERY.matches) {
       if (elements.settingsPanel.parentElement !== elements.settingsSheetBody) elements.settingsSheetBody.append(elements.settingsPanel);
-    } else if (elements.settingsPanel.parentElement !== elements.settingsDock) {
-      elements.settingsDock.append(elements.settingsPanel);
-      if (elements.settingsDialog.open) elements.settingsDialog.close();
+    } else {
+      if (elements.settingsPanel.parentElement !== elements.settingsDock) elements.settingsDock.append(elements.settingsPanel);
+      closeSettings();
     }
+    Q.placeLiveCameraControls();
   }
 
   function openSettings() {
     placeSettingsPanel();
-    if (Q.MOBILE_QUERY.matches) elements.settingsDialog.showModal();
-    else elements.settingsPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (Q.MOBILE_QUERY.matches) {
+      if (elements.settingsDialog.open) {
+        closeSettings();
+        return;
+      }
+      elements.settingsDialog.show();
+      elements.settingsButton.setAttribute("aria-expanded", "true");
+      elements.closeSettingsButton.focus({ preventScroll: true });
+    } else {
+      elements.settingsPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }
+
+  elements.settingsButton.setAttribute("aria-controls", "settingsDialog");
+  elements.settingsButton.setAttribute("aria-expanded", "false");
 
   elements.startButton.removeEventListener("click", Q.originalStartCamera);
   elements.switchButton.removeEventListener("click", Q.originalSwitchCamera);
@@ -39,13 +57,11 @@
   elements.exposureIndexRange.addEventListener("input", (event) => Q.applyExposureIndex(event.target.value));
   elements.exposureResetButton.addEventListener("click", () => Q.applyExposureIndex(0));
   elements.settingsButton.addEventListener("click", openSettings);
-  elements.closeSettingsButton.addEventListener("click", () => elements.settingsDialog.close());
-  elements.settingsDialog.addEventListener("click", (event) => {
-    if (event.target === elements.settingsDialog) elements.settingsDialog.close();
+  elements.closeSettingsButton.addEventListener("click", closeSettings);
+  elements.settingsDialog.addEventListener("close", () => {
+    elements.settingsButton.setAttribute("aria-expanded", "false");
   });
-  elements.privacyButton.addEventListener("click", () => {
-    if (elements.settingsDialog.open) elements.settingsDialog.close();
-  }, { capture: true });
+  elements.privacyButton.addEventListener("click", closeSettings, { capture: true });
   Q.MOBILE_QUERY.addEventListener?.("change", placeSettingsPanel);
   window.addEventListener("resize", placeSettingsPanel, { passive: true });
 
