@@ -52,9 +52,11 @@
     Q.storeSelectedDevice(elements.cameraSourceSelect.value);
     await Q.enhancedStartCamera();
   });
-  elements.manualFocusRange.addEventListener("input", (event) => Q.applyManualFocus(event.target.value));
+  elements.manualFocusRange.addEventListener("input", (event) => Q.scheduleManualFocus(event.target.value));
+  elements.manualFocusRange.addEventListener("change", (event) => Q.applyManualFocus(event.target.value));
   elements.focusResetButton.addEventListener("click", Q.resetFocus);
-  elements.exposureIndexRange.addEventListener("input", (event) => Q.applyExposureIndex(event.target.value));
+  elements.exposureIndexRange.addEventListener("input", (event) => Q.scheduleExposureIndex(event.target.value));
+  elements.exposureIndexRange.addEventListener("change", (event) => Q.applyExposureIndex(event.target.value));
   elements.exposureResetButton.addEventListener("click", () => Q.applyExposureIndex(0));
   elements.settingsButton.addEventListener("click", openSettings);
   elements.closeSettingsButton.addEventListener("click", closeSettings);
@@ -75,6 +77,12 @@
         console.warn("Camera list refresh failed.", error);
       }
     }, 250);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !state.videoTrack) return;
+    Q.applyContinuousFocus({ silent: true })
+      .catch((error) => console.warn("Autofocus resume failed.", error));
   });
 
   placeSettingsPanel();
