@@ -95,6 +95,21 @@
     }
   }
 
+  function hideAdvancedCameraControls() {
+    elements.manualFocusField.hidden = true;
+    elements.exposureSettingField.hidden = true;
+    Q.syncLiveControlVisibility();
+  }
+
+  function logCameraDiagnostics() {
+    console.info("[Quiet Camera] camera diagnostics", {
+      supportedConstraints: navigator.mediaDevices?.getSupportedConstraints?.() ?? {},
+      capabilities: state.capabilities,
+      settings: Q.currentVideoSettings(),
+      constraints: state.videoTrack?.getConstraints?.() ?? {},
+    });
+  }
+
   Q.enhancedStartCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       elements.cameraStatus.textContent = "非対応";
@@ -108,7 +123,9 @@
     }
     if (state.recorder?.state === "recording") return;
 
+    window.clearTimeout(state.focusRestoreTimer);
     stopCamera();
+    hideAdvancedCameraControls();
     elements.cameraStatus.textContent = "起動中…";
     elements.startButton.disabled = true;
     try {
@@ -129,14 +146,18 @@
       elements.shutterButton.disabled = false;
       elements.startButton.disabled = false;
       updateCapabilities();
+      await Q.initializeAutofocus();
+      updateCapabilities();
       updateMediaStatus();
       await Q.refreshCameraList();
       await requestWakeLock();
+      logCameraDiagnostics();
     } catch (error) {
       console.error(error);
       elements.cameraStatus.textContent = error?.name === "NotAllowedError" ? "許可が必要" : "起動失敗";
       elements.startButton.disabled = false;
       elements.permissionPanel.hidden = false;
+      hideAdvancedCameraControls();
       showToast(describeCameraError(error));
     }
   };
