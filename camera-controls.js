@@ -2,6 +2,7 @@
 
 (() => {
   const Q = window.QuietCameraEnhancements;
+  const CONTROL_DEBOUNCE_MS = 90;
 
   function getFocusModes() {
     return Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
@@ -69,75 +70,114 @@
     Q.syncLiveControlVisibility();
   };
 
-  function currentAdvancedState(patch = {}) {
-    const settings = Q.currentVideoSettings();
-    const advanced = {};
-    for (const key of ["zoom", "exposureCompensation", "torch"]) {
-      if (key in state.capabilities && settings[key] !== undefined) advanced[key] = settings[key];
-    }
-    const useManualFocus = patch.focusMode === "manual"
-      || (!Object.prototype.hasOwnProperty.call(patch, "focusMode") && settings.focusMode === "manual");
-    if (useManualFocus && "focusDistance" in state.capabilities && settings.focusDistance !== undefined) {
-      advanced.focusDistance = settings.focusDistance;
-    }
-    return { ...advanced, ...patch };
-  }
-
-  async function applyAndVerify(key, value, { tolerance = 0.001, extra = {} } = {}) {
-    if (!state.videoTrack) return false;
-    await state.videoTrack.applyConstraints({ advanced: [currentAdvancedState({ ...extra, [key]: value })] });
-    await wait(80);
-    const applied = Q.currentVideoSettings()[key];
-    if (typeof value === "boolean") return applied === value;
-    return Number.isFinite(Number(applied)) && Math.abs(Number(applied) - Number(value)) <= tolerance;
-  }
-
-  function clearFocusRestoreTimer() {
+  function clearFocusTimers() {
     window.clearTimeout(state.focusRestoreTimer);
     state.focusRestoreTimer = null;
+    for (const timerId of state.focusRetryTimers) window.clearTimeout(timerId);
+    state.focusRetryTimers.length = 0;
   }
 
-  async function applyFocusRequest(patch) {
-    if (!state.videoTrack) return false;
-    const advanced = currentAdvancedState(patch);
-    if (patch.focusMode !== "manual") delete advanced.focusDistance;
-    try {
-      await state.videoTrack.applyConstraints({ advanced: [advanced] });
-      await wait(120);
-      return true;
-    } catch (error) {
-      console.warn("Focus constraint was rejected.", patch, error);
+  async function tryConstraintPatch(patch) {
+    if (!state.videoTrack) return { accepted: false, error: new Error("Camera track is unavailable") };
+    const attempts = [patch, { advanced: [patch] }];
+    let finalError = null;
+    for (const constraints of attempts) {
+      try {
+        await state.videoTrack.applyConstraints(constraints);
+        return { accepted: true, constraints };
+      } catch (error) {
+        finalError = error;
+      }
+    }
+    return { accepted: false, error: finalError || new Error("Constraint was rejected") };
+  }
+
+  async function readAppliedSetting(key, expected, tolerance = 0.001) {
+    const delays = [0, 80, 180, 360];
+    let lastValue;
+    for (const delay of delays) {
+      if (delay) await wait(delay);
+      const value = Q.currentVideoSettings()[key];
+      if (value !== undefined) lastValue = value;
+      if (typeof expected === "boolean" && value === expected) return { verified: true, value };
+      if (typeof expected === "string" && value === expected) return { verified: true, value };
+      if (typeof expected === "number" && Number.isFinite(Number(value))
+        && Math.abs(Number(value) - expected) <= tolerance) {
+        return { verified: true, value: Number(value) };
+      }
+    }
+    return { verified: false, value: lastValue };
+  }
+
+  async function applyNumericConstraint(key, value, { tolerance = 0.001, extra = {} } = {}) {
+    const result = await tryConstraintPatch({ ...extra, [key]: value });
+    if (!result.accepted) return result;
+    const applied = await readAppliedSetting(key, value, tolerance);
+    return { ...result, ...applied };
+  }
+
+  async function applyFocusPatch(patch) {
+    const result = await tryConstraintPatch(patch);
+    if (!result.accepted) {
+      console.warn("Focus constraint was rejected.", patch, result.error);
       return false;
     }
+    await wait(140);
+    return true;
   }
 
-  Q.applyContinuousFocus = async ({ silent = true } = {}) => {
+  Q.applyContinuousFocus = async ({ silent = true, pulse = false, preserveTimers = false } = {}) => {
     if (!state.videoTrack || !getFocusModes().includes("continuous")) return false;
-    clearFocusRestoreTimer();
-    const accepted = await applyFocusRequest({ focusMode: "continuous" });
+    if (!preserveTimers) clearFocusTimers();
+
+    if (pulse && getFocusModes().includes("manual") && state.capabilities.focusDistance) {
+      const currentDistance = Number(Q.currentVideoSettings().focusDistance);
+      if (Number.isFinite(currentDistance)) {
+        await applyFocusPatch({ focusMode: "manual", focusDistance: currentDistance });
+        await wait(80);
+      }
+    }
+
+    const accepted = await applyFocusPatch({ focusMode: "continuous" });
     if (!accepted) {
-      if (!silent) showToast("連続オートフォーカスを開始できませんでした");
+      if (!silent) showToast("オートフォーカスを開始できませんでした");
       return false;
     }
 
     const appliedMode = Q.currentVideoSettings().focusMode;
-    const success = appliedMode === undefined || appliedMode === "continuous";
-    if (!success && !silent) showToast("連続オートフォーカスが端末に反映されませんでした");
-    if (success) Q.enhancedUpdateCapabilities();
-    return success;
+    if (appliedMode !== undefined && appliedMode !== "continuous") {
+      console.info("Continuous focus request was accepted but not reported by getSettings().", { appliedMode });
+    }
+    Q.enhancedUpdateCapabilities();
+    return true;
   };
 
   Q.initializeAutofocus = async () => {
-    clearFocusRestoreTimer();
-    if (!getFocusModes().includes("continuous")) return false;
-    return Q.applyContinuousFocus({ silent: true });
+    clearFocusTimers();
+    const modes = getFocusModes();
+
+    if (modes.includes("continuous")) {
+      const accepted = await Q.applyContinuousFocus({ silent: true, preserveTimers: true });
+      for (const delay of [350, 1300]) {
+        const timerId = window.setTimeout(() => {
+          Q.applyContinuousFocus({ silent: true, preserveTimers: true })
+            .catch((error) => console.warn("Autofocus retry failed.", error));
+        }, delay);
+        state.focusRetryTimers.push(timerId);
+      }
+      return accepted;
+    }
+
+    if (modes.includes("single-shot")) return applyFocusPatch({ focusMode: "single-shot" });
+    return false;
   };
 
   function restoreContinuousFocusSoon(delay = 900) {
-    clearFocusRestoreTimer();
+    clearFocusTimers();
     if (!getFocusModes().includes("continuous")) return;
     state.focusRestoreTimer = window.setTimeout(() => {
-      Q.applyContinuousFocus({ silent: true }).catch((error) => console.warn("Continuous focus restore failed.", error));
+      Q.applyContinuousFocus({ silent: true })
+        .catch((error) => console.warn("Continuous focus restore failed.", error));
     }, delay);
   }
 
@@ -145,64 +185,107 @@
     const capability = state.capabilities.zoom;
     if (!state.videoTrack || !capability) return;
     const value = Q.roundToCapabilityStep(rawValue, capability, 0.1);
-    try {
-      const success = await applyAndVerify("zoom", value, { tolerance: Q.normalizeStep(capability.step, 0.1) / 2 + 1e-4 });
-      if (!success) throw new Error("Zoom setting was ignored");
-      state.currentZoom = Number(Q.currentVideoSettings().zoom ?? value);
-      elements.zoomRange.value = String(state.currentZoom);
-      elements.zoomValue.value = `${state.currentZoom.toFixed(1)}×`;
-      Q.enhancedUpdateCapabilities();
-    } catch (error) {
-      console.error(error);
-      showToast("このカメラではズームを変更できませんでした");
+    const tolerance = Q.normalizeStep(capability.step, 0.1) / 2 + 1e-4;
+    const result = await applyNumericConstraint("zoom", value, { tolerance });
+    if (!result.accepted) {
+      console.error(result.error);
+      showToast("ズームを適用できませんでした");
+      return;
+    }
+
+    state.currentZoom = result.verified ? Number(result.value) : value;
+    elements.zoomRange.value = String(state.currentZoom);
+    elements.zoomValue.value = `${state.currentZoom.toFixed(1)}×`;
+    if (!result.verified) {
+      console.info("Zoom changed, but getSettings() did not confirm the new value.", { requested: value, reported: result.value });
     }
   };
 
   Q.applyExposureIndex = async (rawIndex) => {
+    window.clearTimeout(state.exposureApplyTimer);
+    state.exposureApplyTimer = null;
     const capability = state.exposureCapability;
     if (!state.videoTrack || !capability) return;
     const index = Q.clamp(Math.round(Number(rawIndex)), capability.minIndex, capability.maxIndex);
     const value = Number((index * capability.step).toFixed(6));
-    try {
-      const success = await applyAndVerify("exposureCompensation", value, { tolerance: capability.step / 2 + 1e-4 });
-      if (!success) throw new Error("Exposure setting was ignored");
-      state.currentExposure = Number(Q.currentVideoSettings().exposureCompensation ?? value);
-      elements.exposureIndexRange.value = String(Math.round(state.currentExposure / capability.step));
-      elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
-    } catch (error) {
-      console.error(error);
-      showToast("このカメラでは明るさを変更できませんでした");
+    const result = await applyNumericConstraint("exposureCompensation", value, {
+      tolerance: capability.step / 2 + 1e-4,
+    });
+    if (!result.accepted) {
+      console.error(result.error);
+      showToast("明るさを適用できませんでした");
+      return;
+    }
+
+    state.currentExposure = result.verified ? Number(result.value) : value;
+    elements.exposureIndexRange.value = String(Math.round(state.currentExposure / capability.step));
+    elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
+    if (!result.verified) {
+      console.info("Exposure changed, but getSettings() did not confirm the new value.", { requested: value, reported: result.value });
     }
   };
 
+  Q.scheduleExposureIndex = (rawIndex) => {
+    const capability = state.exposureCapability;
+    if (!capability) return;
+    const index = Q.clamp(Math.round(Number(rawIndex)), capability.minIndex, capability.maxIndex);
+    const value = Number((index * capability.step).toFixed(6));
+    elements.exposureIndexValue.value = Q.formatEv(value);
+    window.clearTimeout(state.exposureApplyTimer);
+    state.exposureApplyTimer = window.setTimeout(() => Q.applyExposureIndex(index), CONTROL_DEBOUNCE_MS);
+  };
+
   Q.applyManualFocus = async (rawIndex) => {
+    window.clearTimeout(state.manualFocusApplyTimer);
+    state.manualFocusApplyTimer = null;
     const capability = state.focusCapability;
     if (!state.videoTrack || !capability) return;
-    clearFocusRestoreTimer();
+    clearFocusTimers();
     const index = Q.clamp(Math.round(Number(rawIndex)), 0, capability.count);
     const value = Q.roundToCapabilityStep(Number(capability.min) + index * capability.step, capability, 0.01);
-    try {
-      const success = await applyAndVerify("focusDistance", value, {
-        tolerance: capability.step / 2 + 1e-4,
-        extra: { focusMode: "manual" },
-      });
-      if (!success) throw new Error("Focus setting was ignored");
-      const actual = Number(Q.currentVideoSettings().focusDistance ?? value);
-      elements.manualFocusRange.value = String(Math.round((actual - Number(capability.min)) / capability.step));
-      elements.manualFocusValue.value = focusValueLabel(actual, capability);
-    } catch (error) {
-      console.error(error);
-      showToast("このカメラでは手動ピントを変更できませんでした");
+    const result = await applyNumericConstraint("focusDistance", value, {
+      tolerance: capability.step / 2 + 1e-4,
+      extra: { focusMode: "manual" },
+    });
+    if (!result.accepted) {
+      console.error(result.error);
+      showToast("手動ピントを適用できませんでした");
+      return;
     }
+
+    const actual = result.verified ? Number(result.value) : value;
+    elements.manualFocusRange.value = String(Math.round((actual - Number(capability.min)) / capability.step));
+    elements.manualFocusValue.value = focusValueLabel(actual, capability);
+    Q.updateFocusSupportBadge();
+    if (!result.verified) {
+      console.info("Manual focus changed, but getSettings() did not confirm the new value.", { requested: value, reported: result.value });
+    }
+  };
+
+  Q.scheduleManualFocus = (rawIndex) => {
+    const capability = state.focusCapability;
+    if (!capability) return;
+    const index = Q.clamp(Math.round(Number(rawIndex)), 0, capability.count);
+    const value = Q.roundToCapabilityStep(Number(capability.min) + index * capability.step, capability, 0.01);
+    elements.manualFocusValue.value = focusValueLabel(value, capability);
+    window.clearTimeout(state.manualFocusApplyTimer);
+    state.manualFocusApplyTimer = window.setTimeout(() => Q.applyManualFocus(index), CONTROL_DEBOUNCE_MS);
   };
 
   Q.resetFocus = async () => {
     if (!state.stream) return;
+    window.clearTimeout(state.manualFocusApplyTimer);
+    state.manualFocusApplyTimer = null;
     elements.focusResetButton.disabled = true;
     try {
-      const restored = await Q.applyContinuousFocus({ silent: true });
-      if (!restored) await Q.enhancedStartCamera();
-      else showToast("連続オートフォーカスへ戻しました");
+      const restored = await Q.applyContinuousFocus({ silent: true, pulse: true });
+      if (!restored) {
+        const singleShot = getFocusModes().includes("single-shot")
+          && await applyFocusPatch({ focusMode: "single-shot" });
+        if (!singleShot) await Q.enhancedStartCamera();
+      }
+      Q.enhancedUpdateCapabilities();
+      showToast("オートフォーカスを再調整しました");
     } finally {
       elements.focusResetButton.disabled = false;
     }
@@ -226,7 +309,7 @@
     const rect = elements.video.getBoundingClientRect();
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
 
-    clearFocusRestoreTimer();
+    clearFocusTimers();
     showFocusRing(clientX, clientY, "fallback");
 
     const focusModes = getFocusModes();
@@ -239,7 +322,7 @@
       pointAttempts.push({ pointsOfInterest: [point] });
 
       for (const attempt of pointAttempts) {
-        if (await applyFocusRequest(attempt)) {
+        if (await applyFocusPatch(attempt)) {
           showFocusRing(clientX, clientY, "success");
           if (attempt.focusMode === "single-shot") restoreContinuousFocusSoon();
           Q.enhancedUpdateCapabilities();
@@ -249,8 +332,8 @@
     }
 
     if (focusModes.includes("single-shot")) {
-      if (await applyFocusRequest({ focusMode: "single-shot" })) {
-        showCenterFallbackNotice("位置指定AFは非対応のため、画面中央でピントを合わせました");
+      if (await applyFocusPatch({ focusMode: "single-shot" })) {
+        showCenterFallbackNotice("位置指定AFは非対応のため、画面中央で再調整しました");
         restoreContinuousFocusSoon();
         Q.enhancedUpdateCapabilities();
         return;
@@ -258,15 +341,15 @@
     }
 
     if (focusModes.includes("continuous")) {
-      if (await Q.applyContinuousFocus({ silent: true })) {
-        showCenterFallbackNotice("位置指定AFは非対応のため、中央の連続AFを再開しました");
+      if (await Q.applyContinuousFocus({ silent: true, pulse: true })) {
+        showCenterFallbackNotice("位置指定AFは非対応のため、中央のAFを再起動しました");
         return;
       }
     }
 
     if (state.focusCapability) {
       if (!Q.enhancedFocusAt.manualNoticeShown) {
-        showToast("位置指定AFは非対応です。映像上のピントスライダーで調整できます");
+        showToast("位置指定AFは非対応です。設定を開いてピントを調整できます");
         Q.enhancedFocusAt.manualNoticeShown = true;
       }
       return;
