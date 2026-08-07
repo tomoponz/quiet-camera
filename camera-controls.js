@@ -3,6 +3,10 @@
 (() => {
   const Q = window.QuietCameraEnhancements;
 
+  function getFocusModes() {
+    return Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
+  }
+
   function configureExposureControl(settings) {
     const capability = state.capabilities.exposureCompensation;
     if (!capability || !Number.isFinite(capability.min) || !Number.isFinite(capability.max)) {
@@ -36,7 +40,7 @@
 
   function configureFocusControl(settings) {
     const capability = state.capabilities.focusDistance;
-    const focusModes = Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
+    const focusModes = getFocusModes();
     if (!capability || !focusModes.includes("manual") || !Number.isFinite(capability.min) || !Number.isFinite(capability.max)) {
       state.focusCapability = null;
       elements.manualFocusField.hidden = true;
@@ -62,13 +66,19 @@
     elements.exposureControl.hidden = true;
     configureExposureControl(settings);
     configureFocusControl(settings);
+    Q.syncLiveControlVisibility();
   };
 
   function currentAdvancedState(patch = {}) {
     const settings = Q.currentVideoSettings();
     const advanced = {};
-    for (const key of ["zoom", "exposureCompensation", "focusDistance", "torch"]) {
+    for (const key of ["zoom", "exposureCompensation", "torch"]) {
       if (key in state.capabilities && settings[key] !== undefined) advanced[key] = settings[key];
+    }
+    const useManualFocus = patch.focusMode === "manual"
+      || (!Object.prototype.hasOwnProperty.call(patch, "focusMode") && settings.focusMode === "manual");
+    if (useManualFocus && "focusDistance" in state.capabilities && settings.focusDistance !== undefined) {
+      advanced.focusDistance = settings.focusDistance;
     }
     return { ...advanced, ...patch };
   }
@@ -80,6 +90,55 @@
     const applied = Q.currentVideoSettings()[key];
     if (typeof value === "boolean") return applied === value;
     return Number.isFinite(Number(applied)) && Math.abs(Number(applied) - Number(value)) <= tolerance;
+  }
+
+  function clearFocusRestoreTimer() {
+    window.clearTimeout(state.focusRestoreTimer);
+    state.focusRestoreTimer = null;
+  }
+
+  async function applyFocusRequest(patch) {
+    if (!state.videoTrack) return false;
+    const advanced = currentAdvancedState(patch);
+    if (patch.focusMode !== "manual") delete advanced.focusDistance;
+    try {
+      await state.videoTrack.applyConstraints({ advanced: [advanced] });
+      await wait(120);
+      return true;
+    } catch (error) {
+      console.warn("Focus constraint was rejected.", patch, error);
+      return false;
+    }
+  }
+
+  Q.applyContinuousFocus = async ({ silent = true } = {}) => {
+    if (!state.videoTrack || !getFocusModes().includes("continuous")) return false;
+    clearFocusRestoreTimer();
+    const accepted = await applyFocusRequest({ focusMode: "continuous" });
+    if (!accepted) {
+      if (!silent) showToast("連続オートフォーカスを開始できませんでした");
+      return false;
+    }
+
+    const appliedMode = Q.currentVideoSettings().focusMode;
+    const success = appliedMode === undefined || appliedMode === "continuous";
+    if (!success && !silent) showToast("連続オートフォーカスが端末に反映されませんでした");
+    if (success) Q.enhancedUpdateCapabilities();
+    return success;
+  };
+
+  Q.initializeAutofocus = async () => {
+    clearFocusRestoreTimer();
+    if (!getFocusModes().includes("continuous")) return false;
+    return Q.applyContinuousFocus({ silent: true });
+  };
+
+  function restoreContinuousFocusSoon(delay = 900) {
+    clearFocusRestoreTimer();
+    if (!getFocusModes().includes("continuous")) return;
+    state.focusRestoreTimer = window.setTimeout(() => {
+      Q.applyContinuousFocus({ silent: true }).catch((error) => console.warn("Continuous focus restore failed.", error));
+    }, delay);
   }
 
   Q.enhancedApplyZoom = async (rawValue) => {
@@ -119,6 +178,7 @@
   Q.applyManualFocus = async (rawIndex) => {
     const capability = state.focusCapability;
     if (!state.videoTrack || !capability) return;
+    clearFocusRestoreTimer();
     const index = Q.clamp(Math.round(Number(rawIndex)), 0, capability.count);
     const value = Q.roundToCapabilityStep(Number(capability.min) + index * capability.step, capability, 0.01);
     try {
@@ -140,8 +200,9 @@
     if (!state.stream) return;
     elements.focusResetButton.disabled = true;
     try {
-      await Q.enhancedStartCamera();
-      showToast("ピント設定をカメラの初期状態へ戻しました");
+      const restored = await Q.applyContinuousFocus({ silent: true });
+      if (!restored) await Q.enhancedStartCamera();
+      else showToast("連続オートフォーカスへ戻しました");
     } finally {
       elements.focusResetButton.disabled = false;
     }
@@ -152,49 +213,60 @@
     showFocusRing(rect.left + rect.width / 2, rect.top + rect.height / 2, mode);
   }
 
+  function showCenterFallbackNotice(message) {
+    showCenterFocusRing("fallback");
+    if (!Q.enhancedFocusAt.centerFallbackNoticeShown) {
+      showToast(message);
+      Q.enhancedFocusAt.centerFallbackNoticeShown = true;
+    }
+  }
+
   Q.enhancedFocusAt = async (clientX, clientY) => {
     if (!state.videoTrack || state.recorder?.state === "recording") return;
     const rect = elements.video.getBoundingClientRect();
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
 
-    const focusModes = Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
-    const hasPointFocus = Object.prototype.hasOwnProperty.call(state.capabilities, "pointsOfInterest")
-      && focusModes.includes("single-shot");
+    clearFocusRestoreTimer();
+    showFocusRing(clientX, clientY, "fallback");
 
+    const focusModes = getFocusModes();
+    const hasPointFocus = Object.prototype.hasOwnProperty.call(state.capabilities, "pointsOfInterest");
     if (hasPointFocus) {
       const point = mapDisplayPointToSensor(clientX, clientY);
-      const before = Q.currentVideoSettings();
-      try {
-        await state.videoTrack.applyConstraints({ advanced: [{ focusMode: "single-shot", pointsOfInterest: [point] }] });
-        await wait(100);
-        const after = Q.currentVideoSettings();
-        const distanceMoved = Number.isFinite(Number(after.focusDistance)) && Number.isFinite(Number(before.focusDistance))
-          && Math.abs(Number(after.focusDistance) - Number(before.focusDistance)) > 1e-4;
-        if (after.focusMode === "single-shot" || distanceMoved) {
+      const pointAttempts = [];
+      if (focusModes.includes("single-shot")) pointAttempts.push({ focusMode: "single-shot", pointsOfInterest: [point] });
+      if (focusModes.includes("continuous")) pointAttempts.push({ focusMode: "continuous", pointsOfInterest: [point] });
+      pointAttempts.push({ pointsOfInterest: [point] });
+
+      for (const attempt of pointAttempts) {
+        if (await applyFocusRequest(attempt)) {
           showFocusRing(clientX, clientY, "success");
+          if (attempt.focusMode === "single-shot") restoreContinuousFocusSoon();
+          Q.enhancedUpdateCapabilities();
           return;
         }
-      } catch (error) { console.warn("Point focus request failed.", error); }
+      }
     }
 
     if (focusModes.includes("single-shot")) {
-      const before = Q.currentVideoSettings();
-      try {
-        await state.videoTrack.applyConstraints({ advanced: [{ focusMode: "single-shot" }] });
-        await wait(100);
-        const after = Q.currentVideoSettings();
-        const distanceMoved = Number.isFinite(Number(after.focusDistance)) && Number.isFinite(Number(before.focusDistance))
-          && Math.abs(Number(after.focusDistance) - Number(before.focusDistance)) > 1e-4;
-        if (after.focusMode === "single-shot" || distanceMoved) {
-          showCenterFocusRing("success");
-          return;
-        }
-      } catch (error) { console.warn("Single-shot focus request failed.", error); }
+      if (await applyFocusRequest({ focusMode: "single-shot" })) {
+        showCenterFallbackNotice("位置指定AFは非対応のため、画面中央でピントを合わせました");
+        restoreContinuousFocusSoon();
+        Q.enhancedUpdateCapabilities();
+        return;
+      }
+    }
+
+    if (focusModes.includes("continuous")) {
+      if (await Q.applyContinuousFocus({ silent: true })) {
+        showCenterFallbackNotice("位置指定AFは非対応のため、中央の連続AFを再開しました");
+        return;
+      }
     }
 
     if (state.focusCapability) {
       if (!Q.enhancedFocusAt.manualNoticeShown) {
-        showToast("このカメラは位置指定AFに非対応です。設定のピントスライダーで調整できます");
+        showToast("位置指定AFは非対応です。映像上のピントスライダーで調整できます");
         Q.enhancedFocusAt.manualNoticeShown = true;
       }
       return;
