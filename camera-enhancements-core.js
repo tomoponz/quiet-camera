@@ -29,6 +29,18 @@
     exposureResetButton: document.querySelector("#exposureResetButton"),
   });
 
+  const manualFocusAnchor = document.createComment("manual-focus-control");
+  const exposureAnchor = document.createComment("exposure-control");
+  elements.manualFocusField.before(manualFocusAnchor);
+  elements.exposureSettingField.before(exposureAnchor);
+
+  elements.liveCameraControls = document.createElement("div");
+  elements.liveCameraControls.id = "liveCameraControls";
+  elements.liveCameraControls.className = "live-camera-controls";
+  elements.liveCameraControls.setAttribute("aria-label", "映像を見ながら調整するカメラ操作");
+  elements.liveCameraControls.hidden = true;
+  elements.cameraStage.append(elements.liveCameraControls);
+
   try { state.selectedDeviceId = localStorage.getItem(Q.DEVICE_STORAGE_KEY) || ""; }
   catch { state.selectedDeviceId = ""; }
   state.availableCameras = [];
@@ -36,6 +48,7 @@
   state.focusCapability = null;
   state.exposureCapability = null;
   state.deviceRefreshTimer = null;
+  state.focusRestoreTimer = null;
 
   Q.clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   Q.normalizeStep = (rawStep, fallback) => {
@@ -67,5 +80,23 @@
       if (state.selectedDeviceId) localStorage.setItem(Q.DEVICE_STORAGE_KEY, state.selectedDeviceId);
       else localStorage.removeItem(Q.DEVICE_STORAGE_KEY);
     } catch {}
+  };
+
+  Q.syncLiveControlVisibility = () => {
+    const shouldShow = Q.MOBILE_QUERY.matches
+      && (!elements.manualFocusField.hidden || !elements.exposureSettingField.hidden);
+    elements.liveCameraControls.hidden = !shouldShow;
+  };
+
+  Q.placeLiveCameraControls = () => {
+    if (Q.MOBILE_QUERY.matches) {
+      if (elements.manualFocusField.parentElement !== elements.liveCameraControls) {
+        elements.liveCameraControls.append(elements.manualFocusField, elements.exposureSettingField);
+      }
+    } else {
+      manualFocusAnchor.after(elements.manualFocusField);
+      exposureAnchor.after(elements.exposureSettingField);
+    }
+    Q.syncLiveControlVisibility();
   };
 })();

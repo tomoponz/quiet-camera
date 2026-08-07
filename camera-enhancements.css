@@ -77,6 +77,10 @@ html.immersive-mode #settingsSheetBody .settings-panel {
   display: grid !important;
 }
 
+.live-camera-controls {
+  display: none;
+}
+
 @media (min-width: 701px) {
   .settings-dialog {
     display: none;
@@ -98,20 +102,28 @@ html.immersive-mode #settingsSheetBody .settings-panel {
   }
 
   .settings-dialog {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 40;
     width: 100%;
     max-width: none;
-    max-height: min(84dvh, 760px);
-    margin: auto 0 0;
-    padding: 16px max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    max-height: min(38dvh, 360px);
+    margin: 0;
+    padding: 13px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
-    border-radius: 22px 22px 0 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
   }
 
   .settings-dialog[open] {
     display: flex;
     flex-direction: column;
+  }
+
+  .settings-dialog::backdrop {
+    background: transparent;
   }
 
   #settingsSheetBody {
@@ -145,6 +157,59 @@ html.immersive-mode #settingsSheetBody .settings-panel {
     justify-self: end;
   }
 
+  .live-camera-controls {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 38px;
+    z-index: 8;
+    display: grid;
+    gap: 7px;
+    pointer-events: none;
+  }
+
+  .live-camera-controls[hidden] {
+    display: none;
+  }
+
+  .live-camera-controls .range-setting {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+    align-items: center;
+    gap: 7px !important;
+    padding: 7px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    background: rgba(12, 14, 18, 0.78);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    pointer-events: auto;
+  }
+
+  .live-camera-controls .range-setting > span {
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .live-camera-controls .range-setting-controls {
+    grid-template-columns: minmax(72px, 1fr) auto auto;
+    gap: 6px;
+  }
+
+  .live-camera-controls .range-setting-controls .mini-button {
+    grid-column: auto;
+    justify-self: auto;
+    min-height: 30px;
+    padding-inline: 7px;
+  }
+
+  .live-camera-controls .range-setting-controls output {
+    min-width: 4.9em;
+    font-size: 0.68rem;
+  }
+
   .bottom-controls {
     grid-template-columns: 64px 1fr 64px;
   }
@@ -173,6 +238,26 @@ html.immersive-mode #settingsSheetBody .settings-panel {
   }
 
   .settings-dialog .dialog-header {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+  }
+
+  .live-camera-controls {
+    left: 6px;
+    right: 6px;
+    bottom: 34px;
+  }
+
+  .live-camera-controls .range-setting {
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    padding: 6px 7px;
+  }
+
+  .live-camera-controls .range-setting-controls {
+    grid-template-columns: minmax(60px, 1fr) auto;
+  }
+
+  .live-camera-controls .range-setting-controls .mini-button {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 }
