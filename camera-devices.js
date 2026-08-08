@@ -6,9 +6,12 @@
   function buildVideoConstraints({ useSelectedDevice = true, relaxed = false } = {}) {
     const resolution = elements.videoResolutionSelect.value;
     const frameRate = elements.videoFrameRateSelect.value;
+    const supported = navigator.mediaDevices?.getSupportedConstraints?.() ?? {};
     const video = {};
     if (useSelectedDevice && state.selectedDeviceId) video.deviceId = { exact: state.selectedDeviceId };
     else video.facingMode = { ideal: state.facingMode };
+
+    if (supported.focusMode) video.focusMode = { ideal: "continuous" };
 
     if (!relaxed) {
       if (resolution === "720") {
@@ -95,6 +98,17 @@
     }
   }
 
+  function clearCameraControlTimers() {
+    window.clearTimeout(state.focusRestoreTimer);
+    window.clearTimeout(state.manualFocusApplyTimer);
+    window.clearTimeout(state.exposureApplyTimer);
+    for (const timerId of state.focusRetryTimers) window.clearTimeout(timerId);
+    state.focusRestoreTimer = null;
+    state.manualFocusApplyTimer = null;
+    state.exposureApplyTimer = null;
+    state.focusRetryTimers.length = 0;
+  }
+
   function hideAdvancedCameraControls() {
     elements.manualFocusField.hidden = true;
     elements.exposureSettingField.hidden = true;
@@ -103,6 +117,7 @@
 
   function logCameraDiagnostics() {
     console.info("[Quiet Camera] camera diagnostics", {
+      version: Q.APP_VERSION,
       supportedConstraints: navigator.mediaDevices?.getSupportedConstraints?.() ?? {},
       capabilities: state.capabilities,
       settings: Q.currentVideoSettings(),
@@ -123,7 +138,7 @@
     }
     if (state.recorder?.state === "recording") return;
 
-    window.clearTimeout(state.focusRestoreTimer);
+    clearCameraControlTimers();
     stopCamera();
     hideAdvancedCameraControls();
     elements.cameraStatus.textContent = "起動中…";

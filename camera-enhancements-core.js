@@ -4,7 +4,7 @@
   const Q = {};
   window.QuietCameraEnhancements = Q;
 
-  Q.APP_VERSION = "2026.08.07.2";
+  Q.APP_VERSION = "2026.08.07.3";
   Q.DEVICE_STORAGE_KEY = "quiet-camera-selected-device";
   Q.MOBILE_QUERY = window.matchMedia("(max-width: 700px)");
   Q.originalStartCamera = startCamera;
@@ -30,26 +30,25 @@
     exposureResetButton: document.querySelector("#exposureResetButton"),
   });
 
-  const headerActions = document.querySelector(".header-actions");
+  elements.focusResetButton.textContent = "AF再調整";
+
+  const statusBar = elements.cameraStage.querySelector(".status-bar");
   elements.versionBadge = document.createElement("span");
   elements.versionBadge.id = "versionBadge";
   elements.versionBadge.textContent = `v${Q.APP_VERSION}`;
   elements.versionBadge.setAttribute("aria-label", `アプリバージョン ${Q.APP_VERSION}`);
   Object.assign(elements.versionBadge.style, {
-    alignSelf: "center",
-    padding: "4px 7px",
-    border: "1px solid rgba(255,255,255,.18)",
+    padding: "2px 6px",
+    border: "1px solid rgba(255,255,255,.16)",
     borderRadius: "999px",
-    color: "rgba(255,255,255,.82)",
-    background: "rgba(255,255,255,.06)",
-    fontSize: ".68rem",
+    color: "rgba(255,255,255,.78)",
+    background: "rgba(0,0,0,.38)",
+    fontSize: ".62rem",
     fontWeight: "800",
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
   });
-  headerActions?.prepend(elements.versionBadge);
 
-  const statusBar = elements.cameraStage.querySelector(".status-bar");
   elements.focusSupportBadge = document.createElement("span");
   elements.focusSupportBadge.id = "focusSupportBadge";
   elements.focusSupportBadge.textContent = "AF: 待機中";
@@ -62,19 +61,13 @@
     fontWeight: "800",
     whiteSpace: "nowrap",
   });
+  statusBar?.insertBefore(elements.versionBadge, elements.cameraStatus);
   statusBar?.insertBefore(elements.focusSupportBadge, elements.mediaStatus);
 
   const manualFocusAnchor = document.createComment("manual-focus-control");
   const exposureAnchor = document.createComment("exposure-control");
   elements.manualFocusField.before(manualFocusAnchor);
   elements.exposureSettingField.before(exposureAnchor);
-
-  elements.liveCameraControls = document.createElement("div");
-  elements.liveCameraControls.id = "liveCameraControls";
-  elements.liveCameraControls.className = "live-camera-controls";
-  elements.liveCameraControls.setAttribute("aria-label", "映像を見ながら調整するカメラ操作");
-  elements.liveCameraControls.hidden = true;
-  elements.cameraStage.append(elements.liveCameraControls);
 
   try { state.selectedDeviceId = localStorage.getItem(Q.DEVICE_STORAGE_KEY) || ""; }
   catch { state.selectedDeviceId = ""; }
@@ -84,6 +77,9 @@
   state.exposureCapability = null;
   state.deviceRefreshTimer = null;
   state.focusRestoreTimer = null;
+  state.focusRetryTimers = [];
+  state.manualFocusApplyTimer = null;
+  state.exposureApplyTimer = null;
 
   Q.clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   Q.normalizeStep = (rawStep, fallback) => {
@@ -124,9 +120,11 @@
       return;
     }
 
+    const settings = Q.currentVideoSettings();
     const modes = Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
     const manualAvailable = !elements.manualFocusField.hidden;
-    if (modes.includes("continuous") && manualAvailable) elements.focusSupportBadge.textContent = "AF: 連続＋手動";
+    if (settings.focusMode === "manual") elements.focusSupportBadge.textContent = "AF: 手動";
+    else if (modes.includes("continuous") && manualAvailable) elements.focusSupportBadge.textContent = "AF: 連続＋手動";
     else if (manualAvailable) elements.focusSupportBadge.textContent = "AF: 手動対応";
     else if (modes.includes("continuous")) elements.focusSupportBadge.textContent = "AF: 連続";
     else if (modes.includes("single-shot")) elements.focusSupportBadge.textContent = "AF: 中央単発";
@@ -134,19 +132,14 @@
   };
 
   Q.syncLiveControlVisibility = () => {
-    const shouldShow = Q.MOBILE_QUERY.matches
-      && (!elements.manualFocusField.hidden || !elements.exposureSettingField.hidden);
-    elements.liveCameraControls.hidden = !shouldShow;
     Q.updateFocusSupportBadge();
   };
 
   Q.placeLiveCameraControls = () => {
-    if (Q.MOBILE_QUERY.matches) {
-      if (elements.manualFocusField.parentElement !== elements.liveCameraControls) {
-        elements.liveCameraControls.append(elements.manualFocusField, elements.exposureSettingField);
-      }
-    } else {
+    if (elements.manualFocusField.parentElement !== elements.settingsPanel) {
       manualFocusAnchor.after(elements.manualFocusField);
+    }
+    if (elements.exposureSettingField.parentElement !== elements.settingsPanel) {
       exposureAnchor.after(elements.exposureSettingField);
     }
     Q.syncLiveControlVisibility();

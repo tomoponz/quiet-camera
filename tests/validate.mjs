@@ -58,8 +58,10 @@ for (const feature of [
   "getVisibleTargetRatio",
   "NotReadableError",
   "initializeAutofocus",
-  'focusMode: "continuous"',
-  "liveCameraControls",
+  'focusMode = { ideal: "continuous" }',
+  "tryConstraintPatch",
+  "scheduleManualFocus",
+  "scheduleExposureIndex",
 ]) {
   if (!enhancementJs.includes(feature)) throw new Error(`Missing camera enhancement: ${feature}`);
 }
@@ -69,6 +71,9 @@ if (!enhancementJs.includes('hasOwnProperty.call(state.capabilities, "pointsOfIn
 if (!enhancementJs.includes("elements.settingsDialog.show();")) {
   throw new Error("Mobile settings must remain non-modal so the camera preview stays usable");
 }
+if (enhancementJs.includes('throw new Error("Exposure setting was ignored")')) {
+  throw new Error("Exposure must not report failure only because getSettings() is stale");
+}
 
 const enhancementCss = fs.readFileSync(path.join(root, "camera-enhancements.css"), "utf8");
 if (!enhancementCss.includes("#settingsSheetBody .settings-panel")) {
@@ -77,8 +82,8 @@ if (!enhancementCss.includes("#settingsSheetBody .settings-panel")) {
 if (!enhancementCss.includes("#exposureControl") || !enhancementCss.includes("display: none !important")) {
   throw new Error("Legacy floating exposure control must be replaced");
 }
-if (!enhancementCss.includes(".live-camera-controls")) {
-  throw new Error("Manual camera controls must remain visible over the live preview");
+if (enhancementCss.includes(".live-camera-controls .range-setting")) {
+  throw new Error("Manual camera controls must not cover the live preview");
 }
 
 console.log(`Validated ${ids.size} DOM IDs, ${selectors.length} selector references, ${scripts.length} scripts, and ${styles.length} stylesheets.`);

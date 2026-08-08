@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "quiet-camera-v7";
+const CACHE_NAME = "quiet-camera-v8";
 const APP_SHELL = [
   "./",
   "./index.html",
