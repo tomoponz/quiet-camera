@@ -8,20 +8,26 @@
     const frameRate = elements.videoFrameRateSelect.value;
     const supported = navigator.mediaDevices?.getSupportedConstraints?.() ?? {};
     const video = {};
+
     if (useSelectedDevice && state.selectedDeviceId) video.deviceId = { exact: state.selectedDeviceId };
     else video.facingMode = { ideal: state.facingMode };
 
+    // This is only an initial preference. The controller re-applies focus after capabilities are known.
     if (supported.focusMode) video.focusMode = { ideal: "continuous" };
 
     if (!relaxed) {
       if (resolution === "720") {
-        video.width = { ideal: 1280 }; video.height = { ideal: 720 };
+        video.width = { ideal: 1280 };
+        video.height = { ideal: 720 };
       } else if (resolution === "1080") {
-        video.width = { ideal: 1920 }; video.height = { ideal: 1080 };
+        video.width = { ideal: 1920 };
+        video.height = { ideal: 1080 };
       } else if (state.mode === "video") {
-        video.width = { ideal: 1920 }; video.height = { ideal: 1080 };
+        video.width = { ideal: 1920 };
+        video.height = { ideal: 1080 };
       } else {
-        video.width = { ideal: 2560 }; video.height = { ideal: 1440 };
+        video.width = { ideal: 2560 };
+        video.height = { ideal: 1440 };
       }
       if (frameRate !== "auto") video.frameRate = { ideal: Number(frameRate) };
     }
@@ -45,8 +51,9 @@
 
     let finalError = null;
     for (const constraints of candidates) {
-      try { return await navigator.mediaDevices.getUserMedia(constraints); }
-      catch (error) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
         finalError = error;
         if (state.selectedDeviceId && ["NotFoundError", "OverconstrainedError"].includes(error?.name)) {
           Q.removeStoredDevice();
@@ -102,11 +109,9 @@
     window.clearTimeout(state.focusRestoreTimer);
     window.clearTimeout(state.manualFocusApplyTimer);
     window.clearTimeout(state.exposureApplyTimer);
-    for (const timerId of state.focusRetryTimers) window.clearTimeout(timerId);
     state.focusRestoreTimer = null;
     state.manualFocusApplyTimer = null;
     state.exposureApplyTimer = null;
-    state.focusRetryTimers.length = 0;
   }
 
   function hideAdvancedCameraControls() {
@@ -118,6 +123,8 @@
   function logCameraDiagnostics() {
     console.info("[Quiet Camera] camera diagnostics", {
       version: Q.APP_VERSION,
+      controlState: state.cameraControlState,
+      desiredControls: { ...state.cameraDesiredControls },
       supportedConstraints: navigator.mediaDevices?.getSupportedConstraints?.() ?? {},
       capabilities: state.capabilities,
       settings: Q.currentVideoSettings(),
@@ -139,15 +146,19 @@
     if (state.recorder?.state === "recording") return;
 
     clearCameraControlTimers();
+    Q.invalidateCameraController();
     stopCamera();
     hideAdvancedCameraControls();
     elements.cameraStatus.textContent = "起動中…";
     elements.startButton.disabled = true;
+
     try {
       state.stream = await openCameraStream();
       elements.video.srcObject = state.stream;
       await elements.video.play();
       [state.videoTrack] = state.stream.getVideoTracks();
+      if (!state.videoTrack) throw new Error("映像トラックを取得できませんでした");
+
       const settings = Q.currentVideoSettings();
       state.currentDeviceId = settings.deviceId || "";
       state.isFrontCamera = (settings.facingMode || state.facingMode) === "user";
@@ -160,15 +171,31 @@
       elements.permissionPanel.hidden = true;
       elements.shutterButton.disabled = false;
       elements.startButton.disabled = false;
+
       updateCapabilities();
+      Q.initializeCameraController();
       await Q.initializeAutofocus();
       updateCapabilities();
       updateMediaStatus();
       await Q.refreshCameraList();
       await requestWakeLock();
+
+      const activeTrack = state.videoTrack;
+      activeTrack.addEventListener("unmute", () => {
+        if (activeTrack === state.videoTrack) {
+          Q.applyContinuousFocus({ silent: true }).catch((error) => console.warn("AF after track unmute failed.", error));
+        }
+      });
+      activeTrack.addEventListener("ended", () => {
+        if (activeTrack !== state.videoTrack) return;
+        elements.cameraStatus.textContent = "カメラ切断";
+        Q.invalidateCameraController();
+      });
+
       logCameraDiagnostics();
     } catch (error) {
       console.error(error);
+      Q.invalidateCameraController();
       elements.cameraStatus.textContent = error?.name === "NotAllowedError" ? "許可が必要" : "起動失敗";
       elements.startButton.disabled = false;
       elements.permissionPanel.hidden = false;
