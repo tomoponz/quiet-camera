@@ -120,18 +120,43 @@ async function addMedia(media, { showReview = true } = {}) {
   return stored;
 }
 
+function getVisiblePhotoRatio() {
+  const rect = elements.video.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 ? rect.width / rect.height : getTargetRatio();
+}
+
+async function decodePhotoBitmap(blob) {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" });
+  } catch {
+    return createImageBitmap(blob);
+  }
+}
+
 async function getHighQualityPhotoSource() {
   if (typeof ImageCapture !== "undefined" && state.videoTrack) {
     try {
       const imageCapture = new ImageCapture(state.videoTrack);
       const blob = await imageCapture.takePhoto();
-      const bitmap = await createImageBitmap(blob);
-      return { source: bitmap, width: bitmap.width, height: bitmap.height, dispose: () => bitmap.close?.(), highQuality: true };
+      const bitmap = await decodePhotoBitmap(blob);
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        dispose: () => bitmap.close?.(),
+        highQuality: true,
+      };
     } catch (error) {
       console.warn("ImageCapture.takePhoto failed; using preview frame.", error);
     }
   }
-  return { source: elements.video, width: elements.video.videoWidth, height: elements.video.videoHeight, dispose: () => {}, highQuality: false };
+  return {
+    source: elements.video,
+    width: elements.video.videoWidth,
+    height: elements.video.videoHeight,
+    dispose: () => {},
+    highQuality: false,
+  };
 }
 
 async function capturePhoto() {
@@ -140,15 +165,20 @@ async function capturePhoto() {
   elements.shutterButton.disabled = true;
   setControlsDisabled(true);
   let photoSource = null;
+
   try {
     if (state.timerSeconds > 0) await runCountdown(state.timerSeconds);
     photoSource = await getHighQualityPhotoSource();
     if (!photoSource.width || !photoSource.height) throw new Error("カメラ映像を取得できませんでした");
-    const crop = calculateCrop(photoSource.width, photoSource.height, getTargetRatio());
+
+    // Keep the high-resolution still even when its native sensor ratio differs from the preview.
+    // Crop the still to the visible camera-stage ratio instead of falling back to a video frame.
+    const crop = calculateCrop(photoSource.width, photoSource.height, getVisiblePhotoRatio());
     elements.canvas.width = crop.sw;
     elements.canvas.height = crop.sh;
     const context = elements.canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("画像処理を開始できませんでした");
+
     const mirror = state.isFrontCamera && elements.selfieMirrorSelect.value === "mirrored";
     context.save();
     if (mirror) {
@@ -172,6 +202,7 @@ async function capturePhoto() {
       previewBlob = exportBlob;
       typeLabel = exportBlob.type === "image/png" ? "PNG" : exportBlob.type === "image/webp" ? "WebP" : "JPEG";
     }
+
     await addMedia({
       kind: "photo",
       blob: exportBlob,
@@ -180,7 +211,7 @@ async function capturePhoto() {
       mimeType: exportBlob.type,
       width: elements.canvas.width,
       height: elements.canvas.height,
-      meta: `${typeLabel} · ${elements.canvas.width}×${elements.canvas.height} · ${formatBytes(exportBlob.size)}${photoSource.highQuality ? " · 高解像度撮影" : ""}`,
+      meta: `${typeLabel} · ${elements.canvas.width}×${elements.canvas.height} · ${formatBytes(exportBlob.size)} · 画面比率で保存${photoSource.highQuality ? " · 高解像度" : " · プレビュー取得"}`,
     });
     flash();
   } catch (error) {
