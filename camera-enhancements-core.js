@@ -4,12 +4,14 @@
   const Q = {};
   window.QuietCameraEnhancements = Q;
 
-  Q.APP_VERSION = "2026.08.07.3";
+  Q.APP_VERSION = "2026.08.08.1";
   Q.DEVICE_STORAGE_KEY = "quiet-camera-selected-device";
   Q.MOBILE_QUERY = window.matchMedia("(max-width: 700px)");
   Q.originalStartCamera = startCamera;
   Q.originalSwitchCamera = switchCamera;
   Q.originalUpdateCapabilities = updateCapabilities;
+  Q.originalToggleTorch = toggleTorch;
+  Q.originalOpenGallery = openGallery;
 
   Object.assign(elements, {
     cameraSourceField: document.querySelector("#cameraSourceField"),
@@ -77,9 +79,16 @@
   state.exposureCapability = null;
   state.deviceRefreshTimer = null;
   state.focusRestoreTimer = null;
-  state.focusRetryTimers = [];
   state.manualFocusApplyTimer = null;
   state.exposureApplyTimer = null;
+  state.cameraControlTrack = null;
+  state.cameraControlGeneration = 0;
+  state.cameraControlQueue = Promise.resolve();
+  state.cameraDesiredControls = {};
+  state.cameraControlState = "IDLE";
+  state.galleryPageSize = 60;
+  state.galleryLoadedCount = 0;
+  state.galleryTotalCount = 0;
 
   Q.clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   Q.normalizeStep = (rawStep, fallback) => {
@@ -113,10 +122,14 @@
     } catch {}
   };
 
-  Q.updateFocusSupportBadge = () => {
+  Q.updateFocusSupportBadge = (statusText = "") => {
     if (!elements.focusSupportBadge) return;
     if (!state.videoTrack) {
       elements.focusSupportBadge.textContent = "AF: 待機中";
+      return;
+    }
+    if (statusText) {
+      elements.focusSupportBadge.textContent = statusText;
       return;
     }
 
@@ -131,17 +144,11 @@
     else elements.focusSupportBadge.textContent = "AF: 端末任せ";
   };
 
-  Q.syncLiveControlVisibility = () => {
-    Q.updateFocusSupportBadge();
-  };
+  Q.syncLiveControlVisibility = () => Q.updateFocusSupportBadge();
 
   Q.placeLiveCameraControls = () => {
-    if (elements.manualFocusField.parentElement !== elements.settingsPanel) {
-      manualFocusAnchor.after(elements.manualFocusField);
-    }
-    if (elements.exposureSettingField.parentElement !== elements.settingsPanel) {
-      exposureAnchor.after(elements.exposureSettingField);
-    }
+    if (elements.manualFocusField.parentElement !== elements.settingsPanel) manualFocusAnchor.after(elements.manualFocusField);
+    if (elements.exposureSettingField.parentElement !== elements.settingsPanel) exposureAnchor.after(elements.exposureSettingField);
     Q.syncLiveControlVisibility();
   };
 })();
