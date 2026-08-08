@@ -16,10 +16,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node tests/validate.mjs
-      - run: node --check storage.js
-      - run: node --check core.js
-      - run: node --check photo.js
-      - run: node --check video.js
-      - run: node --check ui.js
-      - run: node --check service-worker.js
+      - name: Validate references and PWA wiring
+        run: node tests/validate.mjs
+      - name: Camera constraint regression tests
+        run: node tests/camera-controls.test.cjs
+      - name: Video bitrate regression tests
+        run: node tests/video-bitrate.test.cjs
+      - name: Check every application script
+        run: |
+          for file in \
+            storage.js \
+            core.js \
+            photo.js \
+            video.js \
+            ui.js \
+            fullscreen.js \
+            camera-enhancements-core.js \
+            camera-devices.js \
+            camera-controls.js \
+            camera-capture.js \
+            camera-enhancements.js \
+            service-worker.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
