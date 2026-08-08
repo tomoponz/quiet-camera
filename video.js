@@ -1,17 +1,42 @@
 "use strict";
 
+const HARD_RECORDING_LIMIT_BYTES = 512 * 1024 * 1024;
+const RECORDING_WARNING_BYTES = 384 * 1024 * 1024;
+const VIDEO_BITRATE_BASE_1080P30 = {
+  economy: 3_500_000,
+  standard: 7_000_000,
+  high: 12_000_000,
+};
+
 function pickRecorderMimeType() {
   if (!mediaRecorderSupported()) return "";
-  const candidates = ["video/mp4;codecs=h264,aac", "video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  const candidates = [
+    "video/mp4;codecs=h264,aac",
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function calculateVideoBitsPerSecondFor(width, height, fps, quality = "standard") {
+  const safeWidth = Math.max(320, Number(width) || 1280);
+  const safeHeight = Math.max(240, Number(height) || 720);
+  const safeFps = Math.max(15, Number(fps) || 30);
+  const base = VIDEO_BITRATE_BASE_1080P30[quality] || VIDEO_BITRATE_BASE_1080P30.standard;
+  const pixelScale = Math.min(4, Math.max(0.55, (safeWidth * safeHeight) / (1920 * 1080)));
+  const frameScale = Math.min(2, Math.max(0.75, safeFps / 30));
+  return Math.round(Math.min(28_000_000, Math.max(1_500_000, base * pixelScale * frameScale)));
 }
 
 function getVideoBitsPerSecond() {
   const settings = state.videoTrack?.getSettings?.() ?? {};
-  const pixels = (settings.width || 1280) * (settings.height || 720);
+  const width = Number(settings.width || (elements.videoResolutionSelect.value === "720" ? 1280 : 1920));
+  const height = Number(settings.height || (elements.videoResolutionSelect.value === "720" ? 720 : 1080));
   const fps = Number(settings.frameRate || (elements.videoFrameRateSelect.value === "auto" ? 30 : elements.videoFrameRateSelect.value));
-  const multiplier = elements.videoQualitySelect.value === "high" ? 0.0075 : elements.videoQualitySelect.value === "economy" ? 0.0028 : 0.0048;
-  return Math.round(Math.min(28_000_000, Math.max(1_200_000, pixels * fps * multiplier)));
+  return calculateVideoBitsPerSecondFor(width, height, fps, elements.videoQualitySelect.value);
 }
 
 function getRecordingLimitMs() {
@@ -20,15 +45,28 @@ function getRecordingLimitMs() {
 
 async function prepareRecordingBudget() {
   const budget = await getStorageBudget();
-  if (budget.available !== null && budget.available < 20 * 1024 * 1024) throw new Error("端末の保存容量が不足しています");
-  const safeAvailable = budget.available ? Math.floor(budget.available * 0.55) : 750 * 1024 * 1024;
-  state.recordingMaxBytes = Math.max(5 * 1024 * 1024, Math.min(safeAvailable, 1.5 * 1024 * 1024 * 1024));
+  if (budget.available !== null && budget.available < 20 * 1024 * 1024) {
+    throw new Error("端末の保存容量が不足しています");
+  }
+  const safeAvailable = budget.available === null
+    ? HARD_RECORDING_LIMIT_BYTES
+    : Math.floor(budget.available * 0.45);
+  state.recordingMaxBytes = Math.max(
+    20 * 1024 * 1024,
+    Math.min(safeAvailable, HARD_RECORDING_LIMIT_BYTES),
+  );
+  state.recordingMemoryWarningShown = false;
 }
 
 function updateRecordingClock() {
   state.recordingDurationMs = performance.now() - state.recordingStartedAt;
   elements.recordingTime.textContent = formatDuration(state.recordingDurationMs);
   elements.recordingSize.textContent = formatBytes(state.recordingBytes);
+
+  if (!state.recordingMemoryWarningShown && state.recordingBytes >= Math.min(RECORDING_WARNING_BYTES, state.recordingMaxBytes * 0.8)) {
+    state.recordingMemoryWarningShown = true;
+    showToast("録画サイズが大きくなっています。確定時にメモリを使用するため、必要なら一度停止してください");
+  }
   if (state.recordingDurationMs >= getRecordingLimitMs()) {
     showToast("設定した録画時間に達したため停止します");
     stopRecording();
@@ -52,7 +90,9 @@ function startRecordingClock() {
 function stopRecordingClock() {
   window.clearInterval(state.recordingTimerId);
   state.recordingTimerId = null;
-  if (state.recordingStartedAt) state.recordingDurationMs = Math.max(state.recordingDurationMs, performance.now() - state.recordingStartedAt);
+  if (state.recordingStartedAt) {
+    state.recordingDurationMs = Math.max(state.recordingDurationMs, performance.now() - state.recordingStartedAt);
+  }
 }
 
 async function writeRecordingChunk(blob) {
@@ -71,6 +111,47 @@ async function writeRecordingChunk(blob) {
     resolution: state.recordingResolution,
     bytes: state.recordingBytes,
     duration: state.recordingDurationMs,
+    status: "recording",
+  });
+}
+
+function validateVideoBlob(blob, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    if (!blob?.size) {
+      reject(new Error("動画データが空です"));
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    let settled = false;
+    const finish = (error, metadata) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+      if (error) reject(error);
+      else resolve(metadata);
+    };
+    const timer = window.setTimeout(() => finish(new Error("動画メタデータの確認がタイムアウトしました")), timeoutMs);
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.addEventListener("loadedmetadata", () => {
+      const metadata = {
+        width: Number(video.videoWidth) || 0,
+        height: Number(video.videoHeight) || 0,
+        duration: Number.isFinite(video.duration) ? video.duration : 0,
+      };
+      if (!metadata.width && !metadata.height && !metadata.duration) {
+        finish(new Error("再生可能な動画メタデータを取得できませんでした"));
+        return;
+      }
+      finish(null, metadata);
+    }, { once: true });
+    video.addEventListener("error", () => finish(new Error("録画ファイルを再生可能な動画として確認できませんでした")), { once: true });
+    video.src = url;
   });
 }
 
@@ -81,12 +162,16 @@ async function startRecording() {
   }
   if (!state.stream || state.busy || state.recorder?.state === "recording") return;
   state.busy = true;
+
   try {
     if (state.timerSeconds > 0) await runCountdown(state.timerSeconds);
     await prepareRecordingBudget();
     const mimeType = pickRecorderMimeType();
     const settings = state.videoTrack?.getSettings?.() ?? {};
-    const options = { videoBitsPerSecond: getVideoBitsPerSecond(), audioBitsPerSecond: microphoneEnabled() ? 128_000 : undefined };
+    const options = {
+      videoBitsPerSecond: getVideoBitsPerSecond(),
+      audioBitsPerSecond: microphoneEnabled() ? 128_000 : undefined,
+    };
     if (mimeType) options.mimeType = mimeType;
     try {
       state.recorder = new MediaRecorder(state.stream, options);
@@ -107,7 +192,18 @@ async function startRecording() {
     state.recordingExtension = state.recordingMimeType.includes("mp4") ? "mp4" : "webm";
     state.recordingResolution = settings.width && settings.height ? `${settings.width}×${settings.height}` : "解像度不明";
 
-    await putRecordingSession({ id: state.recordingSessionId, mediaId: state.recordingMediaId, createdAt: state.recordingCreatedAt, mimeType: state.recordingMimeType, extension: state.recordingExtension, audio: state.recordingAudioEnabled, resolution: state.recordingResolution, bytes: 0, duration: 0 });
+    await putRecordingSession({
+      id: state.recordingSessionId,
+      mediaId: state.recordingMediaId,
+      createdAt: state.recordingCreatedAt,
+      mimeType: state.recordingMimeType,
+      extension: state.recordingExtension,
+      audio: state.recordingAudioEnabled,
+      resolution: state.recordingResolution,
+      bytes: 0,
+      duration: 0,
+      status: "recording",
+    });
 
     state.recorder.addEventListener("dataavailable", (event) => {
       if (!event.data || event.data.size <= 0) return;
@@ -173,6 +269,7 @@ async function finalizeRecording() {
   elements.shutterButton.disabled = !state.stream;
   delete elements.galleryButton.dataset.recordingCancel;
   elements.galleryPlaceholder.textContent = "履歴";
+
   try {
     await state.recordingWriteQueue;
     if (state.cancelRecording) {
@@ -181,10 +278,14 @@ async function finalizeRecording() {
       await refreshGallery();
       return;
     }
+
     const chunks = await getRecordingChunks(sessionId);
     const type = recorder?.mimeType || state.recordingMimeType || chunks[0]?.type || "video/webm";
     const blob = new Blob(chunks, { type });
     if (!blob.size) throw new Error("録画データを生成できませんでした");
+    if (blob.size > HARD_RECORDING_LIMIT_BYTES) throw new Error("録画が安全な確定サイズを超えています");
+    await validateVideoBlob(blob);
+
     const extension = type.includes("mp4") ? "mp4" : "webm";
     await addMedia({
       id: state.recordingMediaId,
@@ -201,7 +302,7 @@ async function finalizeRecording() {
     await cleanupRecordingSession(sessionId);
   } catch (error) {
     console.error(error);
-    showToast(error?.message || "録画の確定に失敗しました。次回起動時に復元を試みます");
+    showToast(error?.message || "録画の確定に失敗しました。録画チャンクは次回復元用に保持します");
   } finally {
     state.recordingSessionId = null;
     state.recordingWriteQueue = Promise.resolve();
@@ -212,6 +313,8 @@ async function finalizeRecording() {
 async function recoverInterruptedRecordings() {
   const sessions = await listRecordingSessions();
   let recovered = 0;
+  let retained = 0;
+
   for (const session of sessions) {
     try {
       const chunks = await getRecordingChunks(session.id);
@@ -220,6 +323,9 @@ async function recoverInterruptedRecordings() {
         await cleanupRecordingSession(session.id);
         continue;
       }
+      if (blob.size > HARD_RECORDING_LIMIT_BYTES) throw new Error("復元候補が安全なサイズ上限を超えています");
+      await validateVideoBlob(blob);
+
       const extension = session.extension || (blob.type.includes("mp4") ? "mp4" : "webm");
       await putMedia({
         id: session.mediaId || makeId("recovered-video"),
@@ -236,14 +342,29 @@ async function recoverInterruptedRecordings() {
       await cleanupRecordingSession(session.id);
       recovered += 1;
     } catch (error) {
-      console.error("Interrupted recording could not be recovered.", error);
+      retained += 1;
+      console.error("Interrupted recording could not be validated.", error);
+      try {
+        await putRecordingSession({
+          ...session,
+          status: "recovery-pending",
+          recoveryFailedAt: Date.now(),
+          recoveryError: String(error?.message || error),
+        });
+      } catch {}
     }
   }
+
   if (recovered) showToast(`${recovered}件の中断録画を復元しました`);
+  else if (retained) showToast(`${retained}件の中断録画は再生確認できないため、復元用データを保持しています`);
 }
 
 async function handleShutter() {
   if (state.mode === "photo") await capturePhoto();
   else if (state.recorder?.state === "recording") stopRecording();
   else await startRecording();
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { calculateVideoBitsPerSecondFor, HARD_RECORDING_LIMIT_BYTES };
 }
