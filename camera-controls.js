@@ -2,6 +2,8 @@
 
 const QuietCameraControlModel = (() => {
   const MANAGED_KEYS = ["focusMode", "focusDistance", "zoom", "exposureCompensation", "torch"];
+  const TRANSIENT_KEYS = ["pointsOfInterest"];
+  const CAMERA_KEYS = new Set([...MANAGED_KEYS, ...TRANSIENT_KEYS]);
 
   function hasOwn(object, key) {
     return Object.prototype.hasOwnProperty.call(object || {}, key);
@@ -42,7 +44,7 @@ const QuietCameraControlModel = (() => {
       patch[key] = clamp(desired[key], capability.min, capability.max);
     }
 
-    if (hasOwn(capabilities, "torch") && typeof desired.torch === "boolean") patch.torch = desired.torch;
+    if (capabilities.torch === true && typeof desired.torch === "boolean") patch.torch = desired.torch;
 
     if (hasOwn(capabilities, "pointsOfInterest") && Array.isArray(ephemeral.pointsOfInterest)
       && ephemeral.pointsOfInterest.length) {
@@ -52,7 +54,38 @@ const QuietCameraControlModel = (() => {
     return patch;
   }
 
-  return { MANAGED_KEYS, hasOwn, mergeDesired, buildManagedConstraintPatch };
+  function stripCameraKeys(constraints = {}) {
+    const result = {};
+    for (const [key, value] of Object.entries(constraints || {})) {
+      if (key === "advanced" || CAMERA_KEYS.has(key)) continue;
+      result[key] = value;
+    }
+    return result;
+  }
+
+  function buildConstraintAttempts(existingConstraints = {}, managedPatch = {}) {
+    const basicBase = stripCameraKeys(existingConstraints);
+    const basic = { ...basicBase, ...managedPatch };
+    const preservedAdvanced = Array.isArray(existingConstraints.advanced)
+      ? existingConstraints.advanced
+        .map((entry) => stripCameraKeys(entry))
+        .filter((entry) => Object.keys(entry).length)
+      : [];
+    const advanced = {
+      ...basicBase,
+      advanced: [...preservedAdvanced, managedPatch],
+    };
+    return [basic, advanced];
+  }
+
+  return {
+    MANAGED_KEYS,
+    hasOwn,
+    mergeDesired,
+    buildManagedConstraintPatch,
+    stripCameraKeys,
+    buildConstraintAttempts,
+  };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = QuietCameraControlModel;
@@ -68,7 +101,8 @@ if (typeof window !== "undefined") (() => {
 
   function configureExposureControl(settings) {
     const capability = state.capabilities.exposureCompensation;
-    if (!capability || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))) {
+    if (!capability || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))
+      || Number(capability.max) <= Number(capability.min)) {
       state.exposureCapability = null;
       elements.exposureSettingField.hidden = true;
       return;
@@ -101,7 +135,8 @@ if (typeof window !== "undefined") (() => {
     const capability = state.capabilities.focusDistance;
     const focusModes = getFocusModes();
     if (!capability || !focusModes.includes("manual")
-      || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))) {
+      || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))
+      || Number(capability.max) <= Number(capability.min)) {
       state.focusCapability = null;
       elements.manualFocusField.hidden = true;
       return;
@@ -152,8 +187,8 @@ if (typeof window !== "undefined") (() => {
     if (state.capabilities.exposureCompensation && Number.isFinite(Number(settings.exposureCompensation))) {
       desired.exposureCompensation = Number(settings.exposureCompensation);
     }
-    if (Model.hasOwn(state.capabilities, "torch") && typeof settings.torch === "boolean") desired.torch = settings.torch;
-    else if (Model.hasOwn(state.capabilities, "torch")) desired.torch = Boolean(state.torchEnabled);
+    if (state.capabilities.torch === true && typeof settings.torch === "boolean") desired.torch = settings.torch;
+    else if (state.capabilities.torch === true) desired.torch = Boolean(state.torchEnabled);
     return desired;
   }
 
@@ -191,7 +226,8 @@ if (typeof window !== "undefined") (() => {
 
   async function applyConstraintSet(track, patch) {
     if (!Object.keys(patch).length) return { accepted: false, error: new Error("No supported camera constraints") };
-    const attempts = [{ advanced: [patch] }, patch];
+    const existingConstraints = track.getConstraints?.() ?? {};
+    const attempts = Model.buildConstraintAttempts(existingConstraints, patch);
     let finalError = null;
     for (const constraints of attempts) {
       try {
@@ -400,7 +436,7 @@ if (typeof window !== "undefined") (() => {
   };
 
   Q.enhancedToggleTorch = async () => {
-    if (!state.videoTrack || !Model.hasOwn(state.capabilities, "torch") || state.recorder?.state === "recording") return;
+    if (!state.videoTrack || state.capabilities.torch !== true || state.recorder?.state === "recording") return;
     const next = !Boolean(state.cameraDesiredControls.torch ?? state.torchEnabled);
     const result = await Q.applyManagedCameraControls({ torch: next }, {
       verifyKey: "torch", expectedValue: next,
@@ -427,21 +463,20 @@ if (typeof window !== "undefined") (() => {
     clearFocusTimer();
     const modes = getFocusModes();
     const hasPointFocus = Model.hasOwn(state.capabilities, "pointsOfInterest");
+    const pointMode = modes.includes("single-shot") ? "single-shot" : modes.includes("continuous") ? "continuous" : null;
 
-    if (hasPointFocus) {
+    if (hasPointFocus && pointMode) {
       const point = mapDisplayPointToSensor(clientX, clientY);
-      const mode = modes.includes("single-shot") ? "single-shot" : modes.includes("continuous") ? "continuous" : null;
-      const updates = mode ? { focusMode: mode, focusDistance: null } : {};
-      const result = await Q.applyManagedCameraControls(updates, {
+      const result = await Q.applyManagedCameraControls({ focusMode: pointMode, focusDistance: null }, {
         ephemeral: { pointsOfInterest: [point] },
-        verifyKey: mode ? "focusMode" : null,
-        expectedValue: mode || undefined,
+        verifyKey: "focusMode",
+        expectedValue: pointMode,
       });
       if (result.accepted) {
         // pointsOfInterest may be used for AF, AE, or AWB. Do not claim physical focus success.
         showFocusRing(clientX, clientY, "fallback");
         Q.updateFocusSupportBadge("AF: 位置要求");
-        if (mode === "single-shot") restoreContinuousFocusSoon();
+        if (pointMode === "single-shot") restoreContinuousFocusSoon();
         window.setTimeout(() => Q.updateFocusSupportBadge(), 1000);
         return;
       }
