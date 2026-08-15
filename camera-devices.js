@@ -2,8 +2,29 @@
 
 (() => {
   const Q = window.QuietCameraEnhancements;
+  const stageControls = elements.cameraStage.querySelector(".camera-top-controls");
 
-  function buildVideoConstraints({ useSelectedDevice = true, relaxed = false } = {}) {
+  function recordingLocksCamera() {
+    return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+  }
+
+  function setCameraInteractionReady(ready) {
+    stageControls.inert = !ready;
+    elements.cameraStage.tabIndex = ready ? 0 : -1;
+    elements.cameraStage.setAttribute("aria-busy", String(!ready));
+  }
+
+  function stopStreamTracks(stream) {
+    stream?.getTracks?.().forEach((track) => {
+      try { track.stop(); } catch {}
+    });
+  }
+
+  function cameraStartIsCurrent(generation) {
+    return generation === state.cameraStartGeneration;
+  }
+
+  function buildVideoConstraints({ useSelectedDevice = true, relaxed = false, enforceVideoRatio = true } = {}) {
     const resolution = elements.videoResolutionSelect.value;
     const frameRate = elements.videoFrameRateSelect.value;
     const supported = navigator.mediaDevices?.getSupportedConstraints?.() ?? {};
@@ -14,6 +35,10 @@
 
     // This is only an initial preference. The controller re-applies focus after capabilities are known.
     if (supported.focusMode) video.focusMode = { ideal: "continuous" };
+    if (state.mode === "video" && enforceVideoRatio && supported.aspectRatio) {
+      video.aspectRatio = { exact: getVideoTrackTargetAspectRatio() };
+      if (supported.resizeMode) video.resizeMode = { ideal: "crop-and-scale" };
+    }
 
     if (!relaxed) {
       if (resolution === "720") {
@@ -44,9 +69,11 @@
     const candidates = [
       { audio: buildAudioConstraints(), video: buildVideoConstraints() },
       { audio: buildAudioConstraints(), video: buildVideoConstraints({ relaxed: true }) },
+      { audio: buildAudioConstraints(), video: buildVideoConstraints({ enforceVideoRatio: false }) },
     ];
     if (state.selectedDeviceId) {
       candidates.push({ audio: buildAudioConstraints(), video: buildVideoConstraints({ useSelectedDevice: false }) });
+      candidates.push({ audio: buildAudioConstraints(), video: buildVideoConstraints({ useSelectedDevice: false, enforceVideoRatio: false }) });
     }
 
     let finalError = null;
@@ -63,9 +90,10 @@
     throw finalError || new Error("カメラを起動できませんでした");
   }
 
-  Q.refreshCameraList = async () => {
+  Q.refreshCameraList = async ({ generation = state.cameraStartGeneration } = {}) => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     const devices = await navigator.mediaDevices.enumerateDevices();
+    if (!cameraStartIsCurrent(generation)) return;
     const cameras = devices.filter((device) => device.kind === "videoinput");
     state.availableCameras = cameras;
 
@@ -106,9 +134,11 @@
   }
 
   function clearCameraControlTimers() {
+    window.clearTimeout(state.cameraRestartTimer);
     window.clearTimeout(state.focusRestoreTimer);
     window.clearTimeout(state.manualFocusApplyTimer);
     window.clearTimeout(state.exposureApplyTimer);
+    state.cameraRestartTimer = null;
     state.focusRestoreTimer = null;
     state.manualFocusApplyTimer = null;
     state.exposureApplyTimer = null;
@@ -143,7 +173,11 @@
       showToast("HTTPSで開いてください");
       return;
     }
-    if (state.recorder?.state === "recording") return;
+    if (recordingLocksCamera()) return;
+    const moveFocusToShutter = document.activeElement === elements.startButton;
+
+    const generation = state.cameraStartGeneration + 1;
+    state.cameraStartGeneration = generation;
 
     clearCameraControlTimers();
     Q.invalidateCameraController();
@@ -151,18 +185,35 @@
     hideAdvancedCameraControls();
     elements.cameraStatus.textContent = "起動中…";
     elements.startButton.disabled = true;
+    setCameraInteractionReady(false);
 
+    let openedStream = null;
     try {
-      state.stream = await openCameraStream();
-      elements.video.srcObject = state.stream;
+      openedStream = await openCameraStream();
+      // getUserMedia has no abort signal; an obsolete result must be stopped explicitly.
+      if (!cameraStartIsCurrent(generation)) {
+        stopStreamTracks(openedStream);
+        return;
+      }
+
+      state.stream = openedStream;
+      elements.video.srcObject = openedStream;
       await elements.video.play();
-      [state.videoTrack] = state.stream.getVideoTracks();
+      if (!cameraStartIsCurrent(generation) || state.stream !== openedStream) {
+        stopStreamTracks(openedStream);
+        if (elements.video.srcObject === openedStream) elements.video.srcObject = null;
+        return;
+      }
+
+      [state.videoTrack] = openedStream.getVideoTracks();
       if (!state.videoTrack) throw new Error("映像トラックを取得できませんでした");
 
       const settings = Q.currentVideoSettings();
       state.currentDeviceId = settings.deviceId || "";
+      if (["user", "environment"].includes(settings.facingMode)) state.facingMode = settings.facingMode;
       state.isFrontCamera = (settings.facingMode || state.facingMode) === "user";
       elements.video.classList.toggle("mirrored", state.isFrontCamera);
+      syncVideoRatioWithTrack(settings);
       const resolution = settings.width && settings.height
         ? `${settings.width}×${settings.height}`
         : state.isFrontCamera ? "前面カメラ" : "カメラ";
@@ -171,14 +222,8 @@
       elements.permissionPanel.hidden = true;
       elements.shutterButton.disabled = false;
       elements.startButton.disabled = false;
-
-      updateCapabilities();
-      Q.initializeCameraController();
-      await Q.initializeAutofocus();
-      updateCapabilities();
-      updateMediaStatus();
-      await Q.refreshCameraList();
-      await requestWakeLock();
+      setCameraInteractionReady(true);
+      if (moveFocusToShutter) elements.shutterButton.focus({ preventScroll: true });
 
       const activeTrack = state.videoTrack;
       activeTrack.addEventListener("unmute", () => {
@@ -188,26 +233,67 @@
       });
       activeTrack.addEventListener("ended", () => {
         if (activeTrack !== state.videoTrack) return;
+        state.cameraStartGeneration += 1;
+        window.clearTimeout(state.cameraRestartTimer);
         elements.cameraStatus.textContent = "カメラ切断";
+        elements.shutterButton.disabled = true;
+        elements.startButton.disabled = false;
+        elements.permissionPanel.hidden = false;
+        setCameraInteractionReady(false);
         Q.invalidateCameraController();
+        stopCamera();
+        hideAdvancedCameraControls();
+        state.cameraRestartTimer = window.setTimeout(() => {
+          state.cameraRestartTimer = null;
+          if (document.visibilityState !== "visible" || state.stream || recordingLocksCamera()) return;
+          Q.enhancedStartCamera().catch((error) => console.warn("Camera restart after disconnect failed.", error));
+        }, 500);
       });
+
+      updateCapabilities();
+      Q.initializeCameraController();
+      await Q.initializeAutofocus();
+      if (!cameraStartIsCurrent(generation) || state.videoTrack !== activeTrack || activeTrack.readyState === "ended") return;
+      updateCapabilities();
+      updateMediaStatus();
+      try {
+        await Q.refreshCameraList({ generation });
+      } catch (error) {
+        console.warn("Camera list refresh failed after camera start.", error);
+      }
+      if (!cameraStartIsCurrent(generation) || state.stream !== openedStream) return;
+      await requestWakeLock();
 
       logCameraDiagnostics();
     } catch (error) {
+      stopStreamTracks(openedStream);
+      if (!cameraStartIsCurrent(generation)) return;
       console.error(error);
+      if (state.stream === openedStream) stopCamera();
+      else if (elements.video.srcObject === openedStream) elements.video.srcObject = null;
       Q.invalidateCameraController();
       elements.cameraStatus.textContent = error?.name === "NotAllowedError" ? "許可が必要" : "起動失敗";
       elements.startButton.disabled = false;
+      elements.shutterButton.disabled = true;
       elements.permissionPanel.hidden = false;
+      setCameraInteractionReady(false);
       hideAdvancedCameraControls();
       showToast(describeCameraError(error));
     }
   };
 
   Q.enhancedSwitchCamera = async () => {
-    if (state.busy || state.recorder?.state === "recording") return;
+    if (state.busy || recordingLocksCamera()) return;
     Q.removeStoredDevice();
     state.facingMode = state.facingMode === "environment" ? "user" : "environment";
     await Q.enhancedStartCamera();
   };
+
+  window.addEventListener("pagehide", () => {
+    state.cameraStartGeneration += 1;
+    window.clearTimeout(state.cameraRestartTimer);
+    state.cameraRestartTimer = null;
+  });
+
+  setCameraInteractionReady(Boolean(state.stream));
 })();

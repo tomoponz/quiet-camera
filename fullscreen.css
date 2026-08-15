@@ -54,6 +54,7 @@ html.immersive-mode .camera-stage {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  touch-action: none;
 }
 
 html.immersive-mode .permission-panel {
@@ -70,6 +71,12 @@ html.immersive-mode .camera-top-controls {
 
 html.immersive-mode .camera-top-controls > :not(#fullscreenButton) {
   display: none !important;
+}
+
+html.immersive-mode .camera-top-controls .fullscreen-button {
+  min-width: 48px;
+  width: 48px;
+  height: 48px;
 }
 
 html.immersive-mode .recording-badge {

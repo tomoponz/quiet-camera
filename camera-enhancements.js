@@ -2,25 +2,58 @@
 
 (() => {
   const Q = window.QuietCameraEnhancements;
+  const root = document.documentElement;
+  const SHORT_VIEW_QUERY = window.matchMedia("(max-height: 700px)");
+  const TOUCH_TABLET_QUERY = window.matchMedia("(max-width: 1024px) and (pointer: coarse)");
+  const REDUCED_MOTION_QUERY = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  function closeSettings() {
-    if (elements.settingsDialog.open) elements.settingsDialog.close();
+  function shouldUseSettingsSheet() {
+    return Q.MOBILE_QUERY.matches
+      || SHORT_VIEW_QUERY.matches
+      || TOUCH_TABLET_QUERY.matches
+      || root.classList.contains("immersive-mode");
+  }
+
+  function observeMediaQuery(query) {
+    if (typeof query.addEventListener === "function") query.addEventListener("change", placeSettingsPanel);
+    else query.addListener?.(placeSettingsPanel);
+  }
+
+  function syncSettingsButtonSemantics(sheetMode = shouldUseSettingsSheet()) {
+    elements.settingsButton.setAttribute("aria-controls", sheetMode ? "settingsDialog" : "settingsPanel");
+    if (sheetMode) {
+      elements.settingsButton.setAttribute("aria-expanded", String(elements.settingsDialog.open));
+      elements.settingsButton.setAttribute("aria-haspopup", "dialog");
+    } else {
+      elements.settingsButton.removeAttribute("aria-expanded");
+      elements.settingsButton.removeAttribute("aria-haspopup");
+    }
+  }
+
+  function closeSettings({ restoreFocus = true } = {}) {
+    const wasOpen = elements.settingsDialog.open;
+    if (wasOpen) elements.settingsDialog.close();
     elements.settingsButton.setAttribute("aria-expanded", "false");
+    if (wasOpen && restoreFocus) elements.settingsButton.focus({ preventScroll: true });
   }
 
   function placeSettingsPanel() {
-    if (Q.MOBILE_QUERY.matches) {
+    const sheetMode = shouldUseSettingsSheet();
+    root.classList.toggle("settings-sheet-layout", sheetMode);
+    if (sheetMode) {
       if (elements.settingsPanel.parentElement !== elements.settingsSheetBody) elements.settingsSheetBody.append(elements.settingsPanel);
     } else {
+      const restoreFocus = elements.settingsDialog.contains(document.activeElement);
+      closeSettings({ restoreFocus });
       if (elements.settingsPanel.parentElement !== elements.settingsDock) elements.settingsDock.append(elements.settingsPanel);
-      closeSettings();
     }
+    syncSettingsButtonSemantics(sheetMode);
     Q.placeLiveCameraControls();
   }
 
   function openSettings() {
     placeSettingsPanel();
-    if (Q.MOBILE_QUERY.matches) {
+    if (shouldUseSettingsSheet()) {
       if (elements.settingsDialog.open) {
         closeSettings();
         return;
@@ -29,12 +62,9 @@
       elements.settingsButton.setAttribute("aria-expanded", "true");
       elements.closeSettingsButton.focus({ preventScroll: true });
     } else {
-      elements.settingsPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      elements.settingsPanel.scrollIntoView({ behavior: REDUCED_MOTION_QUERY.matches ? "auto" : "smooth", block: "center" });
     }
   }
-
-  elements.settingsButton.setAttribute("aria-controls", "settingsDialog");
-  elements.settingsButton.setAttribute("aria-expanded", "false");
 
   // Replace direct listeners that captured the legacy functions before this enhancement layer loaded.
   elements.startButton.removeEventListener("click", Q.originalStartCamera);
@@ -66,12 +96,25 @@
   elements.exposureIndexRange.addEventListener("change", (event) => Q.applyExposureIndex(event.target.value));
   elements.exposureResetButton.addEventListener("click", () => Q.applyExposureIndex(0));
   elements.settingsButton.addEventListener("click", openSettings);
+  elements.microphoneStatusButton.addEventListener("click", () => {
+    if (!shouldUseSettingsSheet() || !elements.settingsDialog.open) openSettings();
+    window.setTimeout(() => {
+      elements.microphoneSelect.scrollIntoView({ behavior: "auto", block: "center" });
+      elements.microphoneSelect.focus({ preventScroll: true });
+    }, 0);
+  });
   elements.closeSettingsButton.addEventListener("click", closeSettings);
-  elements.settingsDialog.addEventListener("close", () => {
-    elements.settingsButton.setAttribute("aria-expanded", "false");
+  elements.settingsDialog.addEventListener("close", () => syncSettingsButtonSemantics());
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || !elements.settingsDialog.open) return;
+    event.preventDefault();
+    closeSettings();
   });
   elements.privacyButton.addEventListener("click", closeSettings, { capture: true });
-  Q.MOBILE_QUERY.addEventListener?.("change", placeSettingsPanel);
+  observeMediaQuery(Q.MOBILE_QUERY);
+  observeMediaQuery(SHORT_VIEW_QUERY);
+  observeMediaQuery(TOUCH_TABLET_QUERY);
+  window.addEventListener("quietcamera:immersivechange", placeSettingsPanel);
   window.addEventListener("resize", placeSettingsPanel, { passive: true });
 
   navigator.mediaDevices?.addEventListener?.("devicechange", () => {
@@ -103,16 +146,16 @@
 
   function updatePagedGalleryUi() {
     const total = Number(state.galleryTotalCount || 0);
-    const loaded = state.gallery.length;
+    const loaded = Number(state.galleryLoadedCount || 0);
     elements.galleryCount.textContent = String(total);
     elements.galleryCount.hidden = total === 0;
-    elements.gallerySummary.textContent = total > loaded ? `${total}件中 ${loaded}件を表示` : `${total}件`;
+    updateGallerySummary();
     loadMoreButton.hidden = loaded >= total;
   }
 
   Q.refreshPagedGallery = async ({ append = false } = {}) => {
     revokeGalleryUrls();
-    const offset = append ? state.gallery.length : 0;
+    const offset = append ? Number(state.galleryLoadedCount || 0) : 0;
     const page = await listStoredMediaPage({ offset, limit: state.galleryPageSize });
     if (append) {
       const known = new Set(state.gallery.map((item) => item.id));
@@ -120,13 +163,14 @@
     } else {
       state.gallery = page;
     }
-    state.galleryLoadedCount = state.gallery.length;
+    state.galleryLoadedCount = append ? offset + page.length : page.length;
     state.galleryTotalCount = await countStoredMedia();
 
     const validIds = new Set(state.gallery.map((item) => item.id));
     for (const id of state.selectedGalleryIds) if (!validIds.has(id)) state.selectedGalleryIds.delete(id);
     updateGalleryButton();
     updatePagedGalleryUi();
+    await refreshRecoveryNotice().catch((error) => console.warn("Recovery status could not be loaded.", error));
     if (elements.galleryDialog.open) renderGallery();
     return state.gallery;
   };
@@ -149,8 +193,6 @@
     loadMoreButton.disabled = true;
     try {
       await Q.refreshPagedGallery({ append: true });
-      renderGallery();
-      updatePagedGalleryUi();
     } finally {
       loadMoreButton.disabled = false;
     }

@@ -4,8 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>プライバシーポリシー | Quiet Camera</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=20260815.3">
 </head>
 <body>
   <main class="app privacy-page">
@@ -14,16 +16,18 @@
       <h2>処理する情報</h2>
       <p>カメラ映像、撮影した写真・動画、利用者が有効にした場合のマイク音声を、撮影機能の提供に必要な範囲で端末内処理します。</p>
       <h2>外部送信</h2>
-      <p>撮影データ、音声、位置情報、連絡先、アカウント情報を運営者のサーバーへ自動送信しません。広告、アクセス解析、外部SDK、クラウド保存は使用しません。</p>
+      <p>撮影データや音声を運営者のサーバーへ自動送信しません。広告、アクセス解析、外部SDK、クラウド保存は使用しません。利用者が共有や端末への保存を選んだ後は、選択したアプリや保存先の取り扱いに従います。</p>
+      <p>アプリ本体と更新ファイルはGitHub Pagesから配信されるため、通常のWebアクセスと同様に、配信事業者へIPアドレスなどの接続情報が送られます。Quiet Camera独自の追跡処理はありません。</p>
       <h2>端末内保存</h2>
-      <p>未保存データの消失を防ぐため、撮影結果と録画中の一時データをブラウザのIndexedDBへ保存します。利用者は履歴画面から削除できます。ブラウザのサイトデータ削除でも消去されます。</p>
+      <p>撮影結果と録画中の一時データをブラウザのIndexedDBへ保存します。撮影結果と復元待ちの録画一時データは履歴画面から削除でき、ブラウザのサイトデータ削除でも消去されます。保存はブラウザの容量管理対象であり、次回起動時の保持を保証するものではありません。</p>
+      <p>選択したカメラの識別子と撮影設定は、次回の操作を簡単にするためブラウザのlocalStorageへ保存します。マイク設定は保存せず、起動時に必ずOFFへ戻します。</p>
       <h2>権限</h2>
       <p>カメラ権限は撮影に使用します。マイク権限は動画モードでマイクをONにした場合だけ要求します。位置情報権限は要求しません。</p>
       <h2>端末差</h2>
-      <p>ピント、ズーム、ライト、露出、動画形式などはOSとブラウザが公開する機能に依存します。端末標準カメラと同じ動作を保証するものではありません。</p>
+      <p>ピント、ズーム、ライト、露出、動画形式などはOSとブラウザが公開する機能に依存します。Quiet Cameraは撮影音を再生しませんが、OS、ブラウザ、端末が発する音を制御せず、無音を保証しません。端末標準カメラと同じ動作も保証するものではありません。</p>
       <h2>利用上の注意</h2>
       <p>人物や私有地を撮影・録画するときは、相手の同意と撮影場所の規則を守ってください。違法な撮影や録画への利用は禁止します。</p>
-      <p class="review-meta">制定日：2026年8月3日</p>
+      <p class="review-meta">制定日：2026年8月3日　最終改定日：2026年8月14日</p>
     </section>
   </main>
 </body>

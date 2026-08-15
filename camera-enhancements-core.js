@@ -4,7 +4,7 @@
   const Q = {};
   window.QuietCameraEnhancements = Q;
 
-  Q.APP_VERSION = "2026.08.08.1";
+  Q.APP_VERSION = "2026.08.15.3";
   Q.DEVICE_STORAGE_KEY = "quiet-camera-selected-device";
   Q.MOBILE_QUERY = window.matchMedia("(max-width: 700px)");
   Q.originalStartCamera = startCamera;
@@ -26,45 +26,35 @@
     manualFocusRange: document.querySelector("#manualFocusRange"),
     manualFocusValue: document.querySelector("#manualFocusValue"),
     focusResetButton: document.querySelector("#focusResetButton"),
+    manualFocusAvailability: document.querySelector("#manualFocusAvailability"),
     exposureSettingField: document.querySelector("#exposureSettingField"),
     exposureIndexRange: document.querySelector("#exposureIndexRange"),
     exposureIndexValue: document.querySelector("#exposureIndexValue"),
     exposureResetButton: document.querySelector("#exposureResetButton"),
+    exposureAvailability: document.querySelector("#exposureAvailability"),
   });
 
   elements.focusResetButton.textContent = "AF再調整";
 
-  const statusBar = elements.cameraStage.querySelector(".status-bar");
+  elements.cameraDiagnostics = document.createElement("details");
+  elements.cameraDiagnostics.className = "camera-diagnostics";
+  const diagnosticsSummary = document.createElement("summary");
+  diagnosticsSummary.textContent = "端末情報";
   elements.versionBadge = document.createElement("span");
   elements.versionBadge.id = "versionBadge";
   elements.versionBadge.textContent = `v${Q.APP_VERSION}`;
   elements.versionBadge.setAttribute("aria-label", `アプリバージョン ${Q.APP_VERSION}`);
-  Object.assign(elements.versionBadge.style, {
-    padding: "2px 6px",
-    border: "1px solid rgba(255,255,255,.16)",
-    borderRadius: "999px",
-    color: "rgba(255,255,255,.78)",
-    background: "rgba(0,0,0,.38)",
-    fontSize: ".62rem",
-    fontWeight: "800",
-    fontVariantNumeric: "tabular-nums",
-    whiteSpace: "nowrap",
-  });
 
   elements.focusSupportBadge = document.createElement("span");
   elements.focusSupportBadge.id = "focusSupportBadge";
-  elements.focusSupportBadge.textContent = "AF: 待機中";
+  elements.focusSupportBadge.textContent = "ピント: 待機中";
   elements.focusSupportBadge.title = "ブラウザが公開しているピント機能";
-  Object.assign(elements.focusSupportBadge.style, {
-    padding: "2px 6px",
-    borderRadius: "999px",
-    background: "rgba(0,0,0,.42)",
-    fontSize: ".66rem",
-    fontWeight: "800",
-    whiteSpace: "nowrap",
-  });
-  statusBar?.insertBefore(elements.versionBadge, elements.cameraStatus);
-  statusBar?.insertBefore(elements.focusSupportBadge, elements.mediaStatus);
+  const diagnosticsNote = document.createElement("small");
+  diagnosticsNote.textContent = "表示はブラウザの公開情報です。実際の合焦は端末に依存します。";
+  const diagnosticsBody = document.createElement("div");
+  diagnosticsBody.append(elements.versionBadge, elements.focusSupportBadge, diagnosticsNote);
+  elements.cameraDiagnostics.append(diagnosticsSummary, diagnosticsBody);
+  elements.settingsPanel.append(elements.cameraDiagnostics);
 
   const manualFocusAnchor = document.createComment("manual-focus-control");
   const exposureAnchor = document.createComment("exposure-control");
@@ -81,6 +71,8 @@
   state.focusRestoreTimer = null;
   state.manualFocusApplyTimer = null;
   state.exposureApplyTimer = null;
+  state.cameraRestartTimer = null;
+  state.cameraStartGeneration = 0;
   state.cameraControlTrack = null;
   state.cameraControlGeneration = 0;
   state.cameraControlQueue = Promise.resolve();
@@ -125,23 +117,23 @@
   Q.updateFocusSupportBadge = (statusText = "") => {
     if (!elements.focusSupportBadge) return;
     if (!state.videoTrack) {
-      elements.focusSupportBadge.textContent = "AF: 待機中";
+      elements.focusSupportBadge.textContent = "ピント: 待機中";
       return;
     }
     if (statusText) {
-      elements.focusSupportBadge.textContent = statusText;
+      elements.focusSupportBadge.textContent = statusText.replace(/^AF:/, "ピント:");
       return;
     }
 
     const settings = Q.currentVideoSettings();
     const modes = Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
-    const manualAvailable = !elements.manualFocusField.hidden;
-    if (settings.focusMode === "manual") elements.focusSupportBadge.textContent = "AF: 手動";
-    else if (modes.includes("continuous") && manualAvailable) elements.focusSupportBadge.textContent = "AF: 連続＋手動";
-    else if (manualAvailable) elements.focusSupportBadge.textContent = "AF: 手動対応";
-    else if (modes.includes("continuous")) elements.focusSupportBadge.textContent = "AF: 連続";
-    else if (modes.includes("single-shot")) elements.focusSupportBadge.textContent = "AF: 中央単発";
-    else elements.focusSupportBadge.textContent = "AF: 端末任せ";
+    const manualAvailable = Boolean(state.focusCapability);
+    if (settings.focusMode === "manual") elements.focusSupportBadge.textContent = "ピント: 手動";
+    else if (modes.includes("continuous") && manualAvailable) elements.focusSupportBadge.textContent = "ピント: 自動＋手動";
+    else if (manualAvailable) elements.focusSupportBadge.textContent = "ピント: 手動対応";
+    else if (modes.includes("continuous")) elements.focusSupportBadge.textContent = "ピント: 自動";
+    else if (modes.includes("single-shot")) elements.focusSupportBadge.textContent = "ピント: 中央を再調整";
+    else elements.focusSupportBadge.textContent = "ピント: 端末に任せる";
   };
 
   Q.syncLiveControlVisibility = () => Q.updateFocusSupportBadge();

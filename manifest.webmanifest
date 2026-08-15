@@ -1,8 +1,9 @@
 {
   "name": "Quiet Camera",
   "short_name": "Quiet Camera",
-  "description": "音を立てたくない場面で使える、端末内処理のシンプルなカメラPWA。",
+  "description": "写真と動画を端末内で処理する、プライバシー重視のカメラPWA。",
   "lang": "ja",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -12,10 +13,22 @@
   "categories": ["photo", "utilities"],
   "icons": [
     {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "./icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
