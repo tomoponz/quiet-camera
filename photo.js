@@ -1,5 +1,8 @@
 "use strict";
 
+const PDF_MAX_PAGES = 20;
+const PDF_PAGE_MAX_DIMENSION = 2048;
+
 async function jpegPagesToPdf(pages) {
   if (!pages.length) throw new Error("PDFにする写真がありません");
   const encoder = new TextEncoder();
@@ -52,19 +55,40 @@ async function jpegPagesToPdf(pages) {
   return new Blob(chunks, { type: "application/pdf" });
 }
 
-async function blobToJpegPage(blob) {
+async function blobToJpegPage(blob, maxDimension = PDF_PAGE_MAX_DIMENSION) {
   const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  const scale = Math.min(1, maxDimension / Math.max(1, bitmap.width, bitmap.height));
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
   const context = canvas.getContext("2d", { alpha: false });
-  context.drawImage(bitmap, 0, 0);
+  if (!context) {
+    bitmap.close?.();
+    throw new Error("PDF用の画像処理を開始できませんでした");
+  }
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
   const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.92);
   return { blob: jpeg, width: canvas.width, height: canvas.height };
 }
 
+async function canvasToThumbnailBlob(sourceCanvas, maxDimension = 480) {
+  const longestSide = Math.max(sourceCanvas.width, sourceCanvas.height);
+  const scale = Math.min(1, maxDimension / Math.max(1, longestSide));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+  canvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("サムネイルを生成できませんでした");
+  context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+  return canvasToBlob(canvas, "image/jpeg", 0.78);
+}
+
 function releaseSelectedMediaUrls() {
+  elements.reviewVideo.pause();
+  elements.reviewVideo.removeAttribute("src");
+  elements.reviewVideo.load();
+  elements.reviewImage.removeAttribute("src");
   if (state.selectedObjectUrl) URL.revokeObjectURL(state.selectedObjectUrl);
   if (state.selectedPreviewUrl && state.selectedPreviewUrl !== state.selectedObjectUrl) URL.revokeObjectURL(state.selectedPreviewUrl);
   state.selectedObjectUrl = null;
@@ -97,19 +121,17 @@ function selectMedia(media) {
 function clearSelectedMedia() {
   releaseSelectedMediaUrls();
   state.selectedMedia = null;
-  elements.reviewImage.removeAttribute("src");
-  elements.reviewVideo.pause();
-  elements.reviewVideo.removeAttribute("src");
 }
 
 async function addMedia(media, { showReview = true } = {}) {
   const stored = { ...media, id: media.id || makeId(media.kind), createdAt: media.createdAt || Date.now() };
   await putMedia(stored);
   await refreshGallery();
-  selectMedia(stored);
   if (!showReview) return stored;
   const behavior = elements.autoReviewSelect.value;
   if (behavior === "never") return stored;
+  selectMedia(stored);
+  state.reviewReturnFocus = elements.shutterButton;
   elements.reviewDialog.showModal();
   if (behavior === "brief") {
     window.clearTimeout(state.briefReviewTimer);
@@ -121,8 +143,13 @@ async function addMedia(media, { showReview = true } = {}) {
 }
 
 function getVisiblePhotoRatio() {
-  const rect = elements.video.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 ? rect.width / rect.height : getTargetRatio();
+  // Use the stage border box: its CSS aspect-ratio is the user-selected output
+  // ratio. The nested video is inset by the stage border, which can otherwise
+  // introduce a visible one-to-several-pixel error on short phone viewports.
+  const rect = elements.cameraStage.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) return rect.width / rect.height;
+  const ratio = getTargetRatio();
+  return window.matchMedia("(orientation: portrait)").matches ? 1 / ratio : ratio;
 }
 
 async function decodePhotoBitmap(blob) {
@@ -192,21 +219,28 @@ async function capturePhoto() {
     const quality = Number(elements.photoQualitySelect.value);
     let exportBlob;
     let previewBlob;
+    let thumbnailBlob = null;
     let typeLabel;
     if (requestedType === "application/pdf") {
       previewBlob = await canvasToBlob(elements.canvas, "image/jpeg", quality);
-      exportBlob = await jpegPagesToPdf([{ blob: previewBlob, width: elements.canvas.width, height: elements.canvas.height }]);
+      exportBlob = await jpegPagesToPdf([await blobToJpegPage(previewBlob)]);
       typeLabel = "PDF";
     } else {
       exportBlob = await canvasToBlob(elements.canvas, requestedType, quality);
       previewBlob = exportBlob;
       typeLabel = exportBlob.type === "image/png" ? "PNG" : exportBlob.type === "image/webp" ? "WebP" : "JPEG";
     }
+    try {
+      thumbnailBlob = await canvasToThumbnailBlob(elements.canvas);
+    } catch (error) {
+      console.warn("Photo thumbnail generation failed; using the preview image.", error);
+    }
 
     await addMedia({
       kind: "photo",
       blob: exportBlob,
       previewBlob,
+      thumbnailBlob,
       extension: PHOTO_EXTENSIONS[exportBlob.type] || PHOTO_EXTENSIONS[requestedType] || "jpg",
       mimeType: exportBlob.type,
       width: elements.canvas.width,
@@ -223,5 +257,6 @@ async function capturePhoto() {
     elements.shutterButton.disabled = !state.stream;
     setControlsDisabled(false);
     elements.countdown.textContent = "";
+    if (state.serviceWorkerReloadPending && typeof requestServiceWorkerUpdate === "function") requestServiceWorkerUpdate();
   }
 }

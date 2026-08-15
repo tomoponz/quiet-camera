@@ -22,6 +22,10 @@ jobs:
         run: node tests/camera-controls.test.cjs
       - name: Video bitrate regression tests
         run: node tests/video-bitrate.test.cjs
+      - name: Service Worker failure-path tests
+        run: node tests/service-worker.test.cjs
+      - name: IndexedDB blocked-open tests
+        run: node tests/storage.test.cjs
       - name: Check every application script
         run: |
           for file in \

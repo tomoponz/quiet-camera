@@ -9,6 +9,10 @@ const elements = {
   startButton: document.querySelector("#startButton"),
   photoModeButton: document.querySelector("#photoModeButton"),
   videoModeButton: document.querySelector("#videoModeButton"),
+  videoSupportStatus: document.querySelector("#videoSupportStatus"),
+  microphoneStatusButton: document.querySelector("#microphoneStatusButton"),
+  microphoneStatusText: document.querySelector("#microphoneStatusText"),
+  microphoneStatusDetail: document.querySelector("#microphoneStatusDetail"),
   switchButton: document.querySelector("#switchButton"),
   timerButton: document.querySelector("#timerButton"),
   ratioButton: document.querySelector("#ratioButton"),
@@ -68,6 +72,10 @@ const elements = {
   gallerySummary: document.querySelector("#gallerySummary"),
   galleryGrid: document.querySelector("#galleryGrid"),
   galleryEmpty: document.querySelector("#galleryEmpty"),
+  recoveryNotice: document.querySelector("#recoveryNotice"),
+  recoverySummary: document.querySelector("#recoverySummary"),
+  retryRecoveryButton: document.querySelector("#retryRecoveryButton"),
+  discardRecoveryButton: document.querySelector("#discardRecoveryButton"),
   selectAllButton: document.querySelector("#selectAllButton"),
   exportPdfButton: document.querySelector("#exportPdfButton"),
   deleteSelectedButton: document.querySelector("#deleteSelectedButton"),
@@ -119,20 +127,29 @@ const state = {
   recordingSessionId: null,
   recordingChunkIndex: 0,
   recordingWriteQueue: Promise.resolve(),
+  recordingWriteError: null,
+  recordingRuntimeError: null,
+  recordingChunkMimeType: "",
   recordingBytes: 0,
+  recordingEmittedBytes: 0,
   recordingMaxBytes: null,
   recordingStartedAt: 0,
   recordingDurationMs: 0,
   recordingTimerId: null,
   cancelRecording: false,
+  recordingFinalizing: false,
   deferredInstallPrompt: null,
   waitingServiceWorker: null,
+  serviceWorkerUpdateRequested: false,
+  serviceWorkerReloadPending: false,
   wakeLock: null,
   pinchPointers: new Map(),
   pinchStartDistance: 0,
   pinchStartZoom: 1,
   pinchGestureActive: false,
   briefReviewTimer: null,
+  reviewReturnFocus: null,
+  pendingRecoverySessions: [],
 };
 
 const ratioSequence = ["4:3", "1:1", "16:9"];
@@ -169,6 +186,20 @@ function formatDuration(milliseconds) {
 function mediaRecorderSupported() { return typeof MediaRecorder !== "undefined"; }
 function microphoneEnabled() { return state.mode === "video" && elements.microphoneSelect.value === "on"; }
 
+function syncMicrophoneStatus() {
+  const videoMode = state.mode === "video";
+  const enabled = elements.microphoneSelect.value === "on";
+  elements.microphoneStatusButton.hidden = !videoMode;
+  elements.microphoneStatusButton.classList.toggle("microphone-on", enabled);
+  elements.microphoneStatusButton.classList.toggle("microphone-off", !enabled);
+  elements.microphoneStatusText.textContent = enabled ? "ON" : "OFF";
+  const detail = enabled
+    ? "現在、マイクはONです。音声を録音します。押すとマイク設定を開きます。"
+    : "現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。";
+  elements.microphoneStatusDetail.textContent = detail;
+  elements.microphoneStatusButton.setAttribute("aria-label", detail);
+}
+
 function collectSettings() {
   return {
     mode: state.mode,
@@ -189,6 +220,17 @@ function collectSettings() {
 
 function persistCurrentSettings() { saveSettings(collectSettings()); }
 
+function syncTimerButton() {
+  const label = state.timerSeconds === 0 ? "OFF" : `${state.timerSeconds}s`;
+  elements.timerButton.textContent = label;
+  elements.timerButton.setAttribute("aria-label", state.timerSeconds === 0 ? "セルフタイマー: オフ" : `セルフタイマー: ${state.timerSeconds}秒`);
+}
+
+function syncRatioButton() {
+  elements.ratioButton.textContent = state.ratio;
+  elements.ratioButton.setAttribute("aria-label", `画像比率: ${state.ratio.replace(":", "対")}`);
+}
+
 function applySavedSettings() {
   elements.photoFormatSelect.value = savedSettings.photoFormat;
   elements.photoQualitySelect.value = savedSettings.photoQuality;
@@ -199,8 +241,8 @@ function applySavedSettings() {
   elements.videoFrameRateSelect.value = savedSettings.videoFrameRate;
   elements.videoQualitySelect.value = savedSettings.videoQuality;
   elements.recordingLimitSelect.value = savedSettings.recordingLimit;
-  elements.timerButton.textContent = state.timerSeconds === 0 ? "OFF" : `${state.timerSeconds}s`;
-  elements.ratioButton.textContent = state.ratio;
+  syncTimerButton();
+  syncRatioButton();
   elements.gridOverlay.hidden = !savedSettings.grid;
   elements.gridButton.setAttribute("aria-pressed", String(Boolean(savedSettings.grid)));
 }
@@ -317,8 +359,15 @@ async function startCamera() {
 }
 
 function setControlsDisabled(disabled) {
-  const controls = [elements.photoModeButton, elements.videoModeButton, elements.switchButton, elements.timerButton, elements.ratioButton, elements.photoFormatSelect, elements.photoQualitySelect, elements.autoReviewSelect, elements.selfieMirrorSelect, elements.microphoneSelect, elements.videoResolutionSelect, elements.videoFrameRateSelect, elements.videoQualitySelect, elements.recordingLimitSelect];
-  controls.forEach((control) => { control.disabled = disabled; });
+  const controls = [elements.photoModeButton, elements.videoModeButton, elements.microphoneStatusButton, elements.switchButton, elements.timerButton, elements.ratioButton, elements.photoFormatSelect, elements.photoQualitySelect, elements.autoReviewSelect, elements.selfieMirrorSelect, elements.microphoneSelect, elements.videoResolutionSelect, elements.videoFrameRateSelect, elements.videoQualitySelect, elements.recordingLimitSelect, elements.updateButton, elements.cameraSourceSelect, elements.manualFocusRange, elements.focusResetButton, elements.exposureIndexRange, elements.exposureResetButton].filter(Boolean);
+  controls.forEach((control) => {
+    const unsupportedManualFocus = [elements.manualFocusRange, elements.focusResetButton].includes(control) && !state.focusCapability;
+    const unsupportedExposure = [elements.exposureIndexRange, elements.exposureResetButton].includes(control) && !state.exposureCapability;
+    control.disabled = disabled
+      || (control === elements.videoModeButton && !mediaRecorderSupported())
+      || unsupportedManualFocus
+      || unsupportedExposure;
+  });
   if (!elements.zoomControl.hidden) elements.zoomRange.disabled = disabled;
   if (!elements.exposureControl.hidden) elements.exposureRange.disabled = disabled;
   if (!elements.torchButton.hidden) elements.torchButton.disabled = disabled;
@@ -342,12 +391,13 @@ function updateModeUi() {
   elements.shutterButton.classList.toggle("video", !photoMode);
   elements.shutterButton.setAttribute("aria-label", photoMode ? "写真を撮る" : "録画を開始する");
   elements.permissionCopy.textContent = photoMode ? "写真はサーバーへ送信しません。マイクと位置情報は使用しません。" : "動画はサーバーへ送信しません。マイクはONにした場合だけ使用します。";
+  syncMicrophoneStatus();
   applyStageRatio();
   updateMediaStatus();
 }
 
 async function setMode(mode) {
-  if (state.busy || state.recorder?.state === "recording" || state.mode === mode) return;
+  if (state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive") || state.mode === mode) return;
   state.mode = mode;
   updateModeUi();
   persistCurrentSettings();
@@ -358,7 +408,7 @@ function cycleTimer() {
   if (state.recorder?.state === "recording") return;
   const currentIndex = timerSequence.indexOf(state.timerSeconds);
   state.timerSeconds = timerSequence[(currentIndex + 1) % timerSequence.length];
-  elements.timerButton.textContent = state.timerSeconds === 0 ? "OFF" : `${state.timerSeconds}s`;
+  syncTimerButton();
   persistCurrentSettings();
   showToast(state.timerSeconds === 0 ? "タイマーを解除しました" : `${state.timerSeconds}秒タイマー`);
 }
@@ -373,7 +423,7 @@ function cycleRatio() {
   if (state.mode !== "photo") return;
   const currentIndex = ratioSequence.indexOf(state.ratio);
   state.ratio = ratioSequence[(currentIndex + 1) % ratioSequence.length];
-  elements.ratioButton.textContent = state.ratio;
+  syncRatioButton();
   applyStageRatio();
   persistCurrentSettings();
 }

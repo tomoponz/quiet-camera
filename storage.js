@@ -7,6 +7,7 @@ const CHUNK_STORE = "recordingChunks";
 const SESSION_STORE = "recordingSessions";
 const SETTINGS_KEY = "quiet-camera-settings-v3";
 const DEFAULT_MEDIA_PAGE_SIZE = 60;
+const DATABASE_BLOCKED_MESSAGE = "保存領域の更新を待っています。ほかのQuiet Cameraタブを閉じてください";
 
 let databasePromise = null;
 
@@ -27,6 +28,11 @@ function transactionDone(transaction) {
 
 function resetDatabasePromise() {
   databasePromise = null;
+}
+
+function reportDatabaseBlocked() {
+  console.warn(DATABASE_BLOCKED_MESSAGE);
+  if (typeof showToast === "function") showToast(DATABASE_BLOCKED_MESSAGE);
 }
 
 function openDatabase() {
@@ -69,8 +75,10 @@ function openDatabase() {
     }, { once: true });
 
     request.addEventListener("blocked", () => {
-      resetDatabasePromise();
-      reject(new Error("別のQuiet Cameraタブが保存領域を使用中です。ほかのタブを閉じて再試行してください"));
+      // `blocked` is progress, not a terminal open failure. Keep this request
+      // and shared promise pending so retries cannot queue extra open requests;
+      // it will continue automatically after older tabs close their database.
+      reportDatabaseBlocked();
     }, { once: true });
 
     request.addEventListener("error", () => {

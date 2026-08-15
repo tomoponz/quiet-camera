@@ -46,7 +46,7 @@
 }
 
 .mini-button {
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 9px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -58,7 +58,53 @@
 }
 
 .settings-privacy-button {
-  min-height: 42px;
+  min-height: 44px;
+}
+
+.control-availability-note {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.range-setting-controls :disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.camera-diagnostics {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.camera-diagnostics summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.camera-diagnostics > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2px 8px;
+}
+
+.camera-diagnostics span {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #d8dbe1;
+  font-weight: 800;
+}
+
+.camera-diagnostics small {
+  flex-basis: 100%;
+  line-height: 1.5;
 }
 
 .settings-button {
@@ -83,7 +129,7 @@ html.immersive-mode #settingsSheetBody .settings-panel {
 }
 
 @media (min-width: 701px) {
-  .settings-dialog {
+  html:not(.settings-sheet-layout) .settings-dialog {
     display: none;
   }
 
@@ -97,69 +143,73 @@ html.immersive-mode #settingsSheetBody .settings-panel {
   }
 }
 
+html.settings-sheet-layout #settingsDock {
+  display: none;
+}
+
+html.settings-sheet-layout .settings-dialog {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 40;
+  width: 100%;
+  max-width: none;
+  max-height: min(34dvh, 320px);
+  margin: 0;
+  padding: 12px max(14px, env(safe-area-inset-right)) max(13px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.46);
+}
+
+html.settings-sheet-layout .settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+html.settings-sheet-layout .settings-dialog::backdrop {
+  background: transparent;
+}
+
+html.settings-sheet-layout #settingsSheetBody {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+html.settings-sheet-layout #settingsSheetBody .settings-panel {
+  grid-template-columns: 1fr !important;
+  padding-bottom: 4px;
+}
+
+html.settings-sheet-layout .camera-source-field,
+html.settings-sheet-layout .range-setting,
+html.settings-sheet-layout .settings-privacy-button {
+  grid-column: 1;
+}
+
+html.settings-sheet-layout .setting-field,
+html.settings-sheet-layout .range-setting {
+  grid-template-columns: minmax(78px, auto) minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+html.settings-sheet-layout .range-setting {
+  padding-block: 5px;
+}
+
+html.settings-sheet-layout .range-setting-controls {
+  grid-template-columns: minmax(88px, 1fr) auto;
+}
+
+html.settings-sheet-layout .range-setting-controls .mini-button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
 @media (max-width: 700px) {
   #settingsDock {
     display: none;
-  }
-
-  .settings-dialog {
-    position: fixed;
-    inset: auto 0 0;
-    z-index: 40;
-    width: 100%;
-    max-width: none;
-    max-height: min(34dvh, 320px);
-    margin: 0;
-    padding: 12px max(14px, env(safe-area-inset-right)) max(13px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 18px 18px 0 0;
-    box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.46);
-  }
-
-  .settings-dialog[open] {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .settings-dialog::backdrop {
-    background: transparent;
-  }
-
-  #settingsSheetBody {
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-
-  #settingsSheetBody .settings-panel {
-    grid-template-columns: 1fr !important;
-    padding-bottom: 4px;
-  }
-
-  .camera-source-field,
-  .range-setting,
-  .settings-privacy-button {
-    grid-column: 1;
-  }
-
-  .setting-field,
-  .range-setting {
-    grid-template-columns: minmax(78px, auto) minmax(0, 1fr) !important;
-    gap: 8px !important;
-  }
-
-  .range-setting {
-    padding-block: 5px;
-  }
-
-  .range-setting-controls {
-    grid-template-columns: minmax(88px, 1fr) auto;
-  }
-
-  .range-setting-controls .mini-button {
-    grid-column: 1 / -1;
-    justify-self: end;
   }
 
   .bottom-controls {
@@ -169,14 +219,14 @@ html.immersive-mode #settingsSheetBody .settings-panel {
 
 @media (max-width: 420px) {
   .camera-top-controls {
-    gap: 3px;
+    gap: 0;
   }
 
   .camera-top-controls .icon-button,
   .camera-top-controls .setting-button {
-    min-width: 34px;
-    width: 34px;
-    height: 34px;
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
     font-size: 0.67rem;
   }
 
@@ -185,20 +235,26 @@ html.immersive-mode #settingsSheetBody .settings-panel {
     height: 17px;
   }
 
-  #settingsSheetBody .settings-panel {
+  html.settings-sheet-layout #settingsSheetBody .settings-panel {
     display: grid !important;
   }
 
-  .settings-dialog .dialog-header {
+  html.settings-sheet-layout .settings-dialog .dialog-header {
     margin-bottom: 7px;
   }
 
-  .settings-dialog {
+  html.settings-sheet-layout .settings-dialog {
     max-height: min(32dvh, 290px);
   }
 
-  .range-setting-controls {
+  html.settings-sheet-layout .range-setting-controls {
     grid-template-columns: minmax(70px, 1fr) auto;
     gap: 6px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 700px) {
+  html.settings-sheet-layout .settings-dialog {
+    max-height: min(58dvh, 320px);
   }
 }

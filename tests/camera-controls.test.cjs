@@ -7,7 +7,6 @@ const capabilities = {
   zoom: { min: 1, max: 8, step: 0.1 },
   exposureCompensation: { min: -2, max: 2, step: 0.1 },
   torch: true,
-  pointsOfInterest: true,
 };
 
 const initial = {
@@ -40,15 +39,21 @@ assert.equal("focusDistance" in backToAuto, false, "leaving manual focus must re
 
 const pointPatch = model.buildManagedConstraintPatch(backToAuto, capabilities, {
   pointsOfInterest: [{ x: 0.25, y: 0.75 }],
-});
+}, { pointsOfInterest: true });
 assert.deepEqual(pointPatch.pointsOfInterest, [{ x: 0.25, y: 0.75 }]);
 
-const noPointCapabilities = { ...capabilities };
-delete noPointCapabilities.pointsOfInterest;
-const noPointPatch = model.buildManagedConstraintPatch(backToAuto, noPointCapabilities, {
+const noPointPatch = model.buildManagedConstraintPatch(backToAuto, capabilities, {
   pointsOfInterest: [{ x: 0.25, y: 0.75 }],
 });
-assert.equal("pointsOfInterest" in noPointPatch, false, "point focus must remain capability-gated");
+assert.equal("pointsOfInterest" in noPointPatch, false, "point focus must be gated by getSupportedConstraints");
+
+const misleadingCapabilityPatch = model.buildManagedConstraintPatch(backToAuto, {
+  ...capabilities,
+  pointsOfInterest: true,
+}, {
+  pointsOfInterest: [{ x: 0.25, y: 0.75 }],
+}, { pointsOfInterest: false });
+assert.equal("pointsOfInterest" in misleadingCapabilityPatch, false, "capabilities must not be used as the POI support signal");
 
 const noTorchCapabilities = { ...capabilities, torch: false };
 const noTorchPatch = model.buildManagedConstraintPatch(initial, noTorchCapabilities);
@@ -81,4 +86,59 @@ assert.equal(advancedAttempt.advanced.at(-1).exposureCompensation, 1.2);
 assert.equal(advancedAttempt.advanced[0].aspectRatio, 16 / 9, "unrelated advanced stream constraints must be preserved");
 assert.equal("zoom" in advancedAttempt.advanced[0], false, "stale managed controls must be stripped from preserved advanced constraints");
 
-console.log("camera control model tests passed");
+const offsetRange = model.createIndexedCapabilityRange({ min: -1.3, max: 1.7, step: 0.5 });
+assert.deepEqual(
+  { minIndex: offsetRange.minIndex, maxIndex: offsetRange.maxIndex, zeroOffset: offsetRange.zeroOffset },
+  { minIndex: -3, maxIndex: 3, zeroOffset: 3 },
+  "exposure indices must be anchored to capability.min instead of zero",
+);
+assert.equal(model.capabilityValueForIndex(offsetRange, offsetRange.minIndex), -1.3);
+assert.equal(model.capabilityValueForIndex(offsetRange, 0), 0.2, "reset index should select the closest supported value to zero");
+assert.equal(model.capabilityValueForIndex(offsetRange, offsetRange.maxIndex), 1.7);
+assert.equal(model.capabilityIndexForValue(offsetRange, -1.3), offsetRange.minIndex);
+assert.equal(model.capabilityIndexForValue(offsetRange, 1.7), offsetRange.maxIndex);
+
+const liveTrack = { readyState: "live" };
+assert.equal(model.isControlContextCurrent(liveTrack, 3, liveTrack, 3), true);
+assert.equal(model.isControlContextCurrent(liveTrack, 2, liveTrack, 3), false, "old generations must be stale");
+assert.equal(model.isControlContextCurrent(liveTrack, 3, { readyState: "live" }, 3), false, "old tracks must be stale");
+liveTrack.readyState = "ended";
+assert.equal(model.isControlContextCurrent(liveTrack, 3, liveTrack, 3), false, "ended tracks must be stale");
+
+async function testLatestTaskRunner() {
+  const calls = [];
+  let releaseFirst;
+  const firstBlocked = new Promise((resolve) => { releaseFirst = resolve; });
+  const runner = model.createLatestTaskRunner(async (value) => {
+    calls.push(value);
+    if (value === 1) await firstBlocked;
+  });
+
+  const completion = runner.submit(1);
+  runner.submit(2);
+  runner.submit(3);
+  releaseFirst();
+  await completion;
+  assert.deepEqual(calls, [1, 3], "rapid controls must retain only the latest pending value");
+
+  const clearedCalls = [];
+  let releaseClearTest;
+  const clearBlock = new Promise((resolve) => { releaseClearTest = resolve; });
+  const clearableRunner = model.createLatestTaskRunner(async (value) => {
+    clearedCalls.push(value);
+    if (value === "active") await clearBlock;
+  });
+  const clearCompletion = clearableRunner.submit("active");
+  clearableRunner.submit("stale");
+  clearableRunner.clear();
+  releaseClearTest();
+  await clearCompletion;
+  assert.deepEqual(clearedCalls, ["active"], "controller invalidation must drop queued control values");
+}
+
+testLatestTaskRunner()
+  .then(() => console.log("camera control model tests passed"))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

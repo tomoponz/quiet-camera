@@ -4,16 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d10">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
   <title>Quiet Camera</title>
-  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="manifest" href="./manifest.webmanifest?v=20260815.2">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./fullscreen.css">
-  <link rel="stylesheet" href="./camera-enhancements.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css?v=20260815.2">
+  <link rel="stylesheet" href="./fullscreen.css?v=20260815.2">
+  <link rel="stylesheet" href="./camera-enhancements.css?v=20260815.2">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
@@ -28,12 +31,19 @@
       </div>
     </header>
 
-    <nav class="mode-switcher" aria-label="撮影モード">
-      <button id="photoModeButton" class="mode-button active" type="button" aria-pressed="true">写真</button>
-      <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false">動画</button>
-    </nav>
+    <div class="mode-control-row">
+      <nav class="mode-switcher" aria-label="撮影モード">
+        <button id="photoModeButton" class="mode-button active" type="button" aria-pressed="true">写真</button>
+        <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false" aria-describedby="videoSupportStatus microphoneStatusDetail">動画</button>
+      </nav>
+      <button id="microphoneStatusButton" class="microphone-status microphone-off" type="button" aria-controls="microphoneSelect" hidden>
+        <span aria-hidden="true">現在 MIC</span><strong id="microphoneStatusText">OFF</strong>
+      </button>
+    </div>
+    <p id="videoSupportStatus" class="sr-only" role="status" aria-live="polite"></p>
+    <p id="microphoneStatusDetail" class="sr-only" role="status" aria-live="polite">現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。</p>
 
-    <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像">
+    <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像。EnterまたはSpaceで中央へピントを要求" aria-busy="false" tabindex="-1">
       <video id="cameraVideo" autoplay muted playsinline></video>
       <canvas id="captureCanvas" hidden></canvas>
 
@@ -42,25 +52,26 @@
       <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
       <div id="countdown" class="countdown" aria-live="assertive"></div>
 
-      <div id="recordingBadge" class="recording-badge" hidden aria-live="polite">
-        <span class="recording-dot"></span>
-        <span id="recordingTime">00:00</span>
-        <span id="recordingSize">0 MB</span>
+      <div id="recordingBadge" class="recording-badge" hidden>
+        <span class="recording-dot" aria-hidden="true"></span>
+        <span class="sr-only">録画中。 </span>
+        <span class="recording-metric"><span class="sr-only">録画時間 </span><span id="recordingTime" role="timer" aria-live="off">00:00</span></span>
+        <span class="recording-metric"><span class="sr-only">録画サイズ </span><span id="recordingSize">0 MB</span></span>
         <span id="recordingAudioState">音声なし</span>
       </div>
 
-      <div id="permissionPanel" class="permission-panel">
-        <p class="permission-title">カメラを起動します</p>
+      <div id="permissionPanel" class="permission-panel" role="group" aria-labelledby="permissionTitle" aria-describedby="permissionCopy">
+        <p id="permissionTitle" class="permission-title">カメラを起動します</p>
         <p id="permissionCopy" class="permission-copy">写真と映像はサーバーへ送信しません。マイクは動画設定で有効にした場合だけ使用します。</p>
         <button id="startButton" class="primary-button" type="button">カメラを許可</button>
       </div>
 
-      <div class="camera-top-controls" aria-label="撮影設定">
+      <div class="camera-top-controls" role="group" aria-label="撮影設定">
         <button id="switchButton" class="icon-button" type="button" aria-label="前後カメラを切り替える" title="カメラ切替">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10l-1.5-2M17 17H7l1.5 2M20 8a8 8 0 0 1-1 8M4 16a8 8 0 0 1 1-8"/></svg>
         </button>
-        <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー">OFF</button>
-        <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率">4:3</button>
+        <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー: オフ">OFF</button>
+        <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率: 4対3">4:3</button>
         <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg>
         </button>
@@ -88,7 +99,7 @@
       </div>
 
       <div class="status-bar">
-        <span id="cameraStatus">待機中</span>
+        <span id="cameraStatus" role="status" aria-live="polite">待機中</span>
         <span id="mediaStatus">JPEG</span>
       </div>
     </section>
@@ -97,12 +108,14 @@
     <section id="settingsPanel" class="settings-panel" aria-label="保存と録画の設定">
       <label id="cameraSourceField" class="setting-field camera-source-field" hidden><span>カメラ</span><select id="cameraSourceSelect"><option value="">自動選択</option></select></label>
       <div id="manualFocusField" class="setting-field range-setting" hidden>
-        <span>ピント</span>
-        <div class="range-setting-controls"><input id="manualFocusRange" type="range" min="0" max="0" step="1" value="0"><output id="manualFocusValue" for="manualFocusRange">自動</output><button id="focusResetButton" class="mini-button" type="button">自動に戻す</button></div>
+        <label class="setting-label" for="manualFocusRange">ピント</label>
+        <div class="range-setting-controls"><input id="manualFocusRange" type="range" min="0" max="0" step="1" value="0" aria-valuetext="自動" aria-describedby="manualFocusAvailability"><output id="manualFocusValue" for="manualFocusRange">自動</output><button id="focusResetButton" class="mini-button" type="button">自動に戻す</button></div>
+        <small id="manualFocusAvailability" class="control-availability-note" hidden>手動調整は利用できません。端末のオートフォーカスを使用します。</small>
       </div>
       <div id="exposureSettingField" class="setting-field range-setting" hidden>
-        <span>明るさ</span>
-        <div class="range-setting-controls"><input id="exposureIndexRange" type="range" min="0" max="0" step="1" value="0"><output id="exposureIndexValue" for="exposureIndexRange">0.0EV</output><button id="exposureResetButton" class="mini-button" type="button">0EV</button></div>
+        <label class="setting-label" for="exposureIndexRange">明るさ</label>
+        <div class="range-setting-controls"><input id="exposureIndexRange" type="range" min="0" max="0" step="1" value="0" aria-valuetext="0.0EV" aria-describedby="exposureAvailability"><output id="exposureIndexValue" for="exposureIndexRange">0.0EV</output><button id="exposureResetButton" class="mini-button" type="button">標準に戻す</button></div>
+        <small id="exposureAvailability" class="control-availability-note" hidden>この端末・ブラウザでは明るさ調整を利用できません。</small>
       </div>
       <label id="photoFormatField" class="setting-field"><span>写真形式</span><select id="photoFormatSelect"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option><option value="application/pdf">PDF</option></select></label>
       <label id="photoQualityField" class="setting-field"><span>写真品質</span><select id="photoQualitySelect"><option value="0.82">標準</option><option value="0.92" selected>高画質</option><option value="0.98">最高</option></select></label>
@@ -128,10 +141,10 @@
       <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled><span></span></button>
       <button id="settingsButton" class="round-text-button settings-button" type="button" aria-label="設定を開く" title="設定">⚙</button>
     </section>
-    <p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。</p>
+    <p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。アプリは効果音を再生しませんが、端末やOSの動作を含む無音は保証できません。</p>
   </main>
 
-  <dialog id="reviewDialog" class="sheet-dialog review-dialog">
+  <dialog id="reviewDialog" class="sheet-dialog review-dialog" aria-labelledby="reviewTitle" aria-describedby="reviewMeta">
     <div class="review-layout">
       <div class="review-viewer">
         <img id="reviewImage" class="review-media" alt="撮影した写真" hidden>
@@ -143,42 +156,50 @@
           <button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button>
         </div>
         <div class="dialog-actions review-actions">
-          <button id="deleteButton" class="danger-button" type="button">削除</button>
           <button id="downloadButton" class="secondary-button" type="button">端末に保存</button>
           <button id="shareButton" class="primary-button" type="button">共有</button>
+          <button id="deleteButton" class="danger-button" type="button">削除</button>
         </div>
         <p class="dialog-help">iPhoneでは共有メニューから「画像を保存」または「ファイルに保存」を選んでください。</p>
       </aside>
     </div>
   </dialog>
 
-  <dialog id="galleryDialog" class="sheet-dialog gallery-dialog">
+  <dialog id="galleryDialog" class="sheet-dialog gallery-dialog" aria-labelledby="galleryTitle" aria-describedby="gallerySummary">
     <div class="dialog-header gallery-header">
-      <div><h2>撮影履歴</h2><p id="gallerySummary" class="review-meta">0件</p></div>
+      <div><h2 id="galleryTitle">撮影履歴</h2><p id="gallerySummary" class="review-meta" role="status" aria-live="polite">0件</p></div>
       <button id="closeGalleryButton" class="close-button" type="button" aria-label="閉じる">×</button>
     </div>
     <div class="gallery-toolbar">
-      <button id="selectAllButton" class="secondary-button compact-button" type="button">すべて選択</button>
+      <button id="selectAllButton" class="secondary-button compact-button" type="button">表示中をすべて選択</button>
       <button id="exportPdfButton" class="secondary-button compact-button" type="button" disabled>選択写真をPDF</button>
       <button id="deleteSelectedButton" class="danger-button compact-button" type="button" disabled>選択削除</button>
     </div>
-    <div id="galleryGrid" class="gallery-grid" aria-live="polite"></div>
+    <div id="recoveryNotice" class="recovery-notice" hidden>
+      <p id="recoverySummary">復元待ちの録画があります。</p>
+      <div class="recovery-actions">
+        <button id="retryRecoveryButton" class="secondary-button compact-button" type="button">復元を再試行</button>
+        <button id="discardRecoveryButton" class="danger-button compact-button" type="button">一時データを削除</button>
+      </div>
+    </div>
+    <div id="galleryGrid" class="gallery-grid"></div>
     <p id="galleryEmpty" class="gallery-empty">撮影すると、ここに端末内の履歴が表示されます。</p>
   </dialog>
 
-  <dialog id="settingsDialog" class="sheet-dialog settings-dialog">
-    <div class="dialog-header"><div><h2>カメラ設定</h2><p class="review-meta">利用できる機能だけ表示します。</p></div><button id="closeSettingsButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
+  <dialog id="settingsDialog" class="sheet-dialog settings-dialog" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
+    <div class="dialog-header"><div><h2 id="settingsTitle">カメラ設定</h2><p id="settingsDescription" class="review-meta">利用できる機能だけ表示します。</p></div><button id="closeSettingsButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
     <div id="settingsSheetBody"></div>
   </dialog>
 
-  <dialog id="privacyDialog" class="sheet-dialog info-dialog">
-    <div class="dialog-header"><h2>プライバシー</h2><button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
+  <dialog id="privacyDialog" class="sheet-dialog info-dialog" aria-labelledby="privacyTitle">
+    <div class="dialog-header"><h2 id="privacyTitle">プライバシー</h2><button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
     <ul>
       <li>写真・動画・音声はブラウザ内で処理され、自動送信されません。</li>
-      <li>撮影結果は端末内のブラウザ保存領域へ一時保存され、次回起動時に復元されます。</li>
+      <li>撮影結果はブラウザ保存領域へ保存されます。サイトデータの消去やブラウザによる容量整理で失われる場合があります。</li>
       <li>マイクは動画設定でONにした場合だけ許可を求めます。</li>
       <li>位置情報、連絡先、アカウント情報にはアクセスしません。</li>
       <li>ピント、ズーム、ライト、露出、動画形式は端末とブラウザの対応状況により異なります。</li>
+      <li>共有や端末への保存を選んだ後の取り扱いは、選択したアプリや保存先に従います。</li>
     </ul>
     <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影や録画には使用しないでください。</p>
     <p class="privacy-link"><a href="./privacy.html">プライバシーポリシー全文</a></p>
@@ -186,16 +207,16 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./storage.js" defer></script>
-  <script src="./core.js" defer></script>
-  <script src="./photo.js" defer></script>
-  <script src="./video.js" defer></script>
-  <script src="./ui.js" defer></script>
-  <script src="./fullscreen.js" defer></script>
-  <script src="./camera-enhancements-core.js" defer></script>
-  <script src="./camera-devices.js" defer></script>
-  <script src="./camera-controls.js" defer></script>
-  <script src="./camera-capture.js" defer></script>
-  <script src="./camera-enhancements.js" defer></script>
+  <script src="./storage.js?v=20260815.2" defer></script>
+  <script src="./core.js?v=20260815.2" defer></script>
+  <script src="./photo.js?v=20260815.2" defer></script>
+  <script src="./video.js?v=20260815.2" defer></script>
+  <script src="./ui.js?v=20260815.2" defer></script>
+  <script src="./fullscreen.js?v=20260815.2" defer></script>
+  <script src="./camera-enhancements-core.js?v=20260815.2" defer></script>
+  <script src="./camera-devices.js?v=20260815.2" defer></script>
+  <script src="./camera-controls.js?v=20260815.2" defer></script>
+  <script src="./camera-capture.js?v=20260815.2" defer></script>
+  <script src="./camera-enhancements.js?v=20260815.2" defer></script>
 </body>
 </html>

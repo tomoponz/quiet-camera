@@ -67,23 +67,40 @@ function updateMediaStatus() {
   elements.mediaStatus.textContent = mimeType.includes("mp4") ? "MP4" : mimeType.includes("webm") ? "WebM" : "動画";
 }
 
-function revokeGalleryUrls() {
+function releaseGalleryDialogResources() {
   for (const url of state.galleryObjectUrls.values()) URL.revokeObjectURL(url);
   state.galleryObjectUrls.clear();
+  elements.galleryGrid.replaceChildren();
+}
+
+function revokeGalleryUrls() {
+  releaseGalleryDialogResources();
   if (state.latestPreviewUrl) URL.revokeObjectURL(state.latestPreviewUrl);
   state.latestPreviewUrl = null;
 }
 
+function getGalleryTotalCount() {
+  return Math.max(state.gallery.length, Number(state.galleryTotalCount) || 0);
+}
+
+function updateGallerySummary() {
+  const total = getGalleryTotalCount();
+  const loaded = state.gallery.length;
+  const loadedText = total > loaded ? `${total}件中 ${loaded}件を表示` : `${total}件`;
+  elements.gallerySummary.textContent = `${loadedText} · 選択${state.selectedGalleryIds.size}件`;
+}
+
 function updateGalleryButton() {
   const latest = state.gallery[0];
-  elements.galleryCount.textContent = String(state.gallery.length);
-  elements.galleryCount.hidden = state.gallery.length === 0;
+  const total = getGalleryTotalCount();
+  elements.galleryCount.textContent = String(total);
+  elements.galleryCount.hidden = total === 0;
   elements.galleryPlaceholder.hidden = Boolean(latest);
   elements.previewThumbnail.hidden = true;
   elements.videoThumbnailMark.hidden = true;
   if (!latest) return;
   if (latest.kind === "photo") {
-    const previewBlob = latest.previewBlob || latest.blob;
+    const previewBlob = latest.thumbnailBlob || latest.previewBlob || latest.blob;
     state.latestPreviewUrl = URL.createObjectURL(previewBlob);
     elements.previewThumbnail.src = state.latestPreviewUrl;
     elements.previewThumbnail.hidden = false;
@@ -100,15 +117,14 @@ function updateGallerySelectionUi() {
   const selectedPhotos = selectedItems.filter((item) => item.kind === "photo" && item.previewBlob);
   elements.deleteSelectedButton.disabled = selected === 0;
   elements.exportPdfButton.disabled = selectedPhotos.length === 0;
-  elements.selectAllButton.textContent = selected > 0 && selected === state.gallery.length ? "選択解除" : "すべて選択";
+  elements.selectAllButton.textContent = selected > 0 && selected === state.gallery.length ? "表示中の選択を解除" : "表示中をすべて選択";
+  updateGallerySummary();
 }
 
 function renderGallery() {
-  for (const url of state.galleryObjectUrls.values()) URL.revokeObjectURL(url);
-  state.galleryObjectUrls.clear();
-  elements.galleryGrid.replaceChildren();
+  releaseGalleryDialogResources();
   elements.galleryEmpty.hidden = state.gallery.length > 0;
-  elements.gallerySummary.textContent = `${state.gallery.length}件 · 選択${state.selectedGalleryIds.size}件`;
+  updateGallerySummary();
 
   for (const media of state.gallery) {
     const card = document.createElement("article");
@@ -119,29 +135,34 @@ function renderGallery() {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = state.selectedGalleryIds.has(media.id);
-    checkbox.setAttribute("aria-label", "選択");
+    const mediaLabel = `${media.kind === "video" ? "動画" : media.extension.toUpperCase()} ${formatMediaDate(media.createdAt)}`;
+    checkbox.setAttribute("aria-label", `${mediaLabel}を選択`);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.selectedGalleryIds.add(media.id);
       else state.selectedGalleryIds.delete(media.id);
-      renderGallery();
+      updateGallerySelectionUi();
     });
     selectLabel.append(checkbox);
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "gallery-open";
+    openButton.setAttribute("aria-label", `${mediaLabel}を開く`);
     openButton.addEventListener("click", () => {
       selectMedia(media);
+      state.reviewReturnFocus = elements.galleryButton;
       elements.galleryDialog.close();
       elements.reviewDialog.showModal();
     });
     const visual = document.createElement("div");
     visual.className = "gallery-visual";
     if (media.kind === "photo") {
-      const url = URL.createObjectURL(media.previewBlob || media.blob);
+      const url = URL.createObjectURL(media.thumbnailBlob || media.previewBlob || media.blob);
       state.galleryObjectUrls.set(media.id, url);
       const image = document.createElement("img");
       image.src = url;
       image.alt = "撮影した写真";
+      image.loading = "lazy";
+      image.decoding = "async";
       visual.append(image);
     } else {
       visual.classList.add("video-placeholder");
@@ -164,7 +185,55 @@ async function refreshGallery() {
   const validIds = new Set(state.gallery.map((item) => item.id));
   for (const id of state.selectedGalleryIds) if (!validIds.has(id)) state.selectedGalleryIds.delete(id);
   updateGalleryButton();
+  await refreshRecoveryNotice().catch((error) => console.warn("Recovery status could not be loaded.", error));
   if (elements.galleryDialog.open) renderGallery();
+}
+
+async function refreshRecoveryNotice() {
+  const sessions = await listRecordingSessions();
+  state.pendingRecoverySessions = sessions.filter((session) => session.id !== state.recordingSessionId);
+  const count = state.pendingRecoverySessions.length;
+  const bytes = state.pendingRecoverySessions.reduce((sum, session) => sum + (Number(session.bytes) || 0), 0);
+  elements.recoveryNotice.hidden = count === 0;
+  elements.recoverySummary.textContent = count
+    ? `復元待ちの録画一時データが${count}件あります${bytes > 0 ? `（${formatBytes(bytes)}）` : ""}。再試行するか、不要なら削除できます。`
+    : "復元待ちの録画はありません。";
+  elements.retryRecoveryButton.disabled = count === 0;
+  elements.discardRecoveryButton.disabled = count === 0;
+  return state.pendingRecoverySessions;
+}
+
+async function retryPendingRecordings() {
+  if (!state.pendingRecoverySessions.length) return;
+  elements.retryRecoveryButton.disabled = true;
+  elements.discardRecoveryButton.disabled = true;
+  try {
+    await recoverInterruptedRecordings({ force: true });
+    await refreshGallery();
+    if (elements.galleryDialog.open) renderGallery();
+  } catch (error) {
+    console.error(error);
+    showToast("録画の復元を再試行できませんでした");
+  } finally {
+    await refreshRecoveryNotice().catch(() => {});
+  }
+}
+
+async function discardPendingRecordings() {
+  const sessions = [...state.pendingRecoverySessions];
+  if (!sessions.length) return;
+  if (!window.confirm(`${sessions.length}件の復元待ち録画を完全に削除しますか？`)) return;
+  elements.retryRecoveryButton.disabled = true;
+  elements.discardRecoveryButton.disabled = true;
+  try {
+    for (const session of sessions) await cleanupRecordingSession(session.id);
+    showToast(`${sessions.length}件の録画一時データを削除しました`);
+  } catch (error) {
+    console.error(error);
+    showToast("録画一時データをすべて削除できませんでした");
+  } finally {
+    await refreshRecoveryNotice().catch(() => {});
+  }
 }
 
 async function openGallery() {
@@ -197,12 +266,16 @@ function toggleSelectAll() {
 async function exportSelectedPhotosToPdf() {
   const photos = state.gallery.filter((item) => state.selectedGalleryIds.has(item.id) && item.kind === "photo" && item.previewBlob).sort((a, b) => a.createdAt - b.createdAt);
   if (!photos.length) return;
+  if (photos.length > PDF_MAX_PAGES) {
+    showToast(`PDFは一度に${PDF_MAX_PAGES}枚まで作成できます`);
+    return;
+  }
   elements.exportPdfButton.disabled = true;
   try {
     const pages = [];
     for (const photo of photos) pages.push(await blobToJpegPage(photo.previewBlob));
     const pdfBlob = await jpegPagesToPdf(pages);
-    await addMedia({ kind: "photo", blob: pdfBlob, previewBlob: photos[0].previewBlob, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${photos.length}ページ · ${formatBytes(pdfBlob.size)}` }, { showReview: false });
+    await addMedia({ kind: "photo", blob: pdfBlob, previewBlob: photos[0].previewBlob, thumbnailBlob: photos[0].thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${photos.length}ページ · ${formatBytes(pdfBlob.size)}` }, { showReview: false });
     state.selectedGalleryIds.clear();
     await refreshGallery();
     renderGallery();
@@ -210,6 +283,8 @@ async function exportSelectedPhotosToPdf() {
   } catch (error) {
     console.error(error);
     showToast("PDFの作成に失敗しました");
+  } finally {
+    updateGallerySelectionUi();
   }
 }
 
@@ -340,7 +415,26 @@ function registerServiceWorker() {
       });
     } catch (error) { console.error("Service worker registration failed:", error); }
   });
-  navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload());
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // A first install may claim this page. Reload only after the user accepted an update.
+    if (!state.serviceWorkerUpdateRequested) return;
+    state.serviceWorkerUpdateRequested = false;
+    window.location.reload();
+  });
+}
+
+function requestServiceWorkerUpdate() {
+  const recordingActive = Boolean(state.recorder && state.recorder.state !== "inactive") || state.recordingFinalizing;
+  if (recordingActive || state.busy) {
+    state.serviceWorkerReloadPending = true;
+    showToast("撮影データの保存後にアプリを更新します");
+    return false;
+  }
+  if (!state.waitingServiceWorker) return false;
+  state.serviceWorkerReloadPending = false;
+  state.serviceWorkerUpdateRequested = true;
+  state.waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+  return true;
 }
 
 async function initializeApp() {
@@ -351,6 +445,7 @@ async function initializeApp() {
   if (!mediaRecorderSupported()) {
     elements.videoModeButton.disabled = true;
     elements.videoModeButton.title = "このブラウザは動画録画に対応していません";
+    elements.videoSupportStatus.textContent = "このブラウザは動画録画に対応していません。写真モードを利用できます。";
     if (state.mode === "video") { state.mode = "photo"; updateModeUi(); }
   }
 }
@@ -376,19 +471,33 @@ elements.shareButton.addEventListener("click", shareMedia);
 elements.selectAllButton.addEventListener("click", toggleSelectAll);
 elements.deleteSelectedButton.addEventListener("click", deleteSelectedGalleryMedia);
 elements.exportPdfButton.addEventListener("click", exportSelectedPhotosToPdf);
+elements.retryRecoveryButton.addEventListener("click", retryPendingRecordings);
+elements.discardRecoveryButton.addEventListener("click", discardPendingRecordings);
 elements.privacyButton.addEventListener("click", () => elements.privacyDialog.showModal());
 elements.installButton.addEventListener("click", installApp);
-elements.updateButton.addEventListener("click", () => state.waitingServiceWorker?.postMessage({ type: "SKIP_WAITING" }));
+elements.updateButton.addEventListener("click", requestServiceWorkerUpdate);
 elements.reviewDialog.addEventListener("click", handleDialogBackdrop);
 elements.galleryDialog.addEventListener("click", handleDialogBackdrop);
 elements.privacyDialog.addEventListener("click", handleDialogBackdrop);
-elements.reviewDialog.addEventListener("close", () => elements.reviewVideo.pause());
+elements.reviewDialog.addEventListener("close", () => {
+  window.clearTimeout(state.briefReviewTimer);
+  state.briefReviewTimer = null;
+  clearSelectedMedia();
+  const returnFocus = state.reviewReturnFocus;
+  state.reviewReturnFocus = null;
+  if (returnFocus?.isConnected) window.setTimeout(() => {
+    const target = !returnFocus.disabled ? returnFocus : elements.galleryButton;
+    if (!target.disabled) target.focus({ preventScroll: true });
+  }, 0);
+});
+elements.galleryDialog.addEventListener("close", releaseGalleryDialogResources);
 
 bindSetting(elements.photoFormatSelect, { updateStatus: true });
 bindSetting(elements.photoQualitySelect);
 bindSetting(elements.autoReviewSelect);
 bindSetting(elements.selfieMirrorSelect);
 bindSetting(elements.microphoneSelect, { restartCamera: true });
+elements.microphoneSelect.addEventListener("change", syncMicrophoneStatus);
 bindSetting(elements.videoResolutionSelect, { restartCamera: true });
 bindSetting(elements.videoFrameRateSelect, { restartCamera: true });
 bindSetting(elements.videoQualitySelect);
@@ -398,13 +507,19 @@ elements.cameraStage.addEventListener("pointerdown", handlePointerDown);
 elements.cameraStage.addEventListener("pointermove", handlePointerMove);
 elements.cameraStage.addEventListener("pointerup", handlePointerUp);
 elements.cameraStage.addEventListener("pointercancel", handlePointerUp);
+elements.cameraStage.addEventListener("keydown", (event) => {
+  if (event.target !== elements.cameraStage || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  const rect = elements.video.getBoundingClientRect();
+  focusAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
+});
 
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); state.deferredInstallPrompt = event; elements.installButton.hidden = false; });
 window.addEventListener("appinstalled", () => { state.deferredInstallPrompt = null; elements.installButton.hidden = true; showToast("Quiet Cameraをインストールしました"); });
-window.addEventListener("beforeunload", (event) => { if (state.recorder?.state === "recording") { event.preventDefault(); event.returnValue = ""; } });
+window.addEventListener("beforeunload", (event) => { if ((state.recorder && state.recorder.state !== "inactive") || state.recordingFinalizing) { event.preventDefault(); event.returnValue = ""; } });
 document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible" && state.stream) await requestWakeLock(); });
 window.addEventListener("pagehide", () => {
-  if (state.recorder?.state === "recording") {
+  if (state.recorder && state.recorder.state !== "inactive") {
     try { state.recorder.requestData?.(); } catch {}
     try { state.recorder.stop(); } catch {}
   }

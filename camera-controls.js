@@ -13,6 +13,89 @@ const QuietCameraControlModel = (() => {
     return Math.min(Number(max), Math.max(Number(min), Number(value)));
   }
 
+  function createIndexedCapabilityRange(capability = {}, fallbackStep = 0.1) {
+    const min = Number(capability.min);
+    const max = Number(capability.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+    const span = max - min;
+    const requestedStep = Number(capability.step);
+    const fallback = Number(fallbackStep);
+    const normalizedStep = Number.isFinite(requestedStep) && requestedStep > 0
+      ? requestedStep
+      : Number.isFinite(fallback) && fallback > 0 ? fallback : span;
+    const step = Math.min(normalizedStep, span);
+    const count = Math.max(1, Math.floor(span / step + 1e-6));
+    // Keep index 0 as the closest supported reset value while anchoring every step at capability.min.
+    const zeroTarget = clamp(0, min, max);
+    const zeroOffset = clamp(Math.round((zeroTarget - min) / step), 0, count);
+    return {
+      min,
+      max,
+      step,
+      count,
+      zeroOffset,
+      minIndex: -zeroOffset,
+      maxIndex: count - zeroOffset,
+    };
+  }
+
+  function capabilityValueForIndex(range, rawIndex) {
+    if (!range) return null;
+    const numericIndex = Number(rawIndex);
+    const index = clamp(Number.isFinite(numericIndex) ? Math.round(numericIndex) : 0, range.minIndex, range.maxIndex);
+    const value = range.min + (index + range.zeroOffset) * range.step;
+    return Number(clamp(value, range.min, range.max).toFixed(6));
+  }
+
+  function capabilityIndexForValue(range, rawValue) {
+    if (!range) return null;
+    const numericValue = Number(rawValue);
+    const value = clamp(Number.isFinite(numericValue) ? numericValue : 0, range.min, range.max);
+    const stepIndex = clamp(Math.round((value - range.min) / range.step), 0, range.count);
+    return stepIndex - range.zeroOffset;
+  }
+
+  function isControlContextCurrent(track, generation, currentTrack, currentGeneration) {
+    return Boolean(track)
+      && track === currentTrack
+      && generation === currentGeneration
+      && track.readyState !== "ended";
+  }
+
+  function createLatestTaskRunner(runTask) {
+    if (typeof runTask !== "function") throw new TypeError("runTask must be a function");
+    let hasPending = false;
+    let latestTask;
+    let activePromise = null;
+
+    const start = () => {
+      if (activePromise || !hasPending) return activePromise;
+      activePromise = (async () => {
+        while (hasPending) {
+          hasPending = false;
+          const task = latestTask;
+          await runTask(task);
+        }
+      })().finally(() => {
+        activePromise = null;
+        if (hasPending) start();
+      });
+      return activePromise;
+    };
+
+    return {
+      submit(task) {
+        latestTask = task;
+        hasPending = true;
+        return start();
+      },
+      clear() {
+        hasPending = false;
+        latestTask = undefined;
+      },
+    };
+  }
+
   function mergeDesired(current, updates = {}) {
     const next = { ...(current || {}) };
     for (const [key, value] of Object.entries(updates)) {
@@ -24,7 +107,7 @@ const QuietCameraControlModel = (() => {
     return next;
   }
 
-  function buildManagedConstraintPatch(desired = {}, capabilities = {}, ephemeral = {}) {
+  function buildManagedConstraintPatch(desired = {}, capabilities = {}, ephemeral = {}, supportedConstraints = {}) {
     const patch = {};
     const focusModes = Array.isArray(capabilities.focusMode) ? capabilities.focusMode : [];
 
@@ -46,7 +129,7 @@ const QuietCameraControlModel = (() => {
 
     if (capabilities.torch === true && typeof desired.torch === "boolean") patch.torch = desired.torch;
 
-    if (hasOwn(capabilities, "pointsOfInterest") && Array.isArray(ephemeral.pointsOfInterest)
+    if (supportedConstraints.pointsOfInterest === true && Array.isArray(ephemeral.pointsOfInterest)
       && ephemeral.pointsOfInterest.length) {
       patch.pointsOfInterest = ephemeral.pointsOfInterest;
     }
@@ -81,6 +164,11 @@ const QuietCameraControlModel = (() => {
   return {
     MANAGED_KEYS,
     hasOwn,
+    createIndexedCapabilityRange,
+    capabilityValueForIndex,
+    capabilityIndexForValue,
+    isControlContextCurrent,
+    createLatestTaskRunner,
     mergeDesired,
     buildManagedConstraintPatch,
     stripCameraKeys,
@@ -94,6 +182,26 @@ if (typeof window !== "undefined") (() => {
   const Q = window.QuietCameraEnhancements;
   const Model = QuietCameraControlModel;
   const CONTROL_DEBOUNCE_MS = 110;
+  let zoomTaskRunner = null;
+  let latestZoomRequestId = 0;
+
+  function recordingLocksCameraControls() {
+    return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+  }
+
+  function getSupportedConstraintFlags() {
+    try { return navigator.mediaDevices?.getSupportedConstraints?.() ?? {}; }
+    catch { return {}; }
+  }
+
+  function controlContextIsCurrent(track, generation) {
+    return Model.isControlContextCurrent(
+      track,
+      generation,
+      state.videoTrack,
+      state.cameraControlGeneration,
+    );
+  }
 
   function getFocusModes() {
     return Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
@@ -101,25 +209,32 @@ if (typeof window !== "undefined") (() => {
 
   function configureExposureControl(settings) {
     const capability = state.capabilities.exposureCompensation;
-    if (!capability || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))
-      || Number(capability.max) <= Number(capability.min)) {
+    const indexedRange = Model.createIndexedCapabilityRange(capability, 0.1);
+    if (!indexedRange) {
       state.exposureCapability = null;
-      elements.exposureSettingField.hidden = true;
+      elements.exposureIndexRange.disabled = true;
+      elements.exposureResetButton.disabled = true;
+      elements.exposureIndexValue.value = "利用不可";
+      elements.exposureIndexRange.setAttribute("aria-valuetext", "この端末では利用できません");
+      elements.exposureAvailability.hidden = false;
+      elements.exposureSettingField.hidden = false;
       return;
     }
 
-    const step = Q.normalizeStep(capability.step, 0.1);
-    const minIndex = Math.ceil(Number(capability.min) / step - 1e-6);
-    const maxIndex = Math.floor(Number(capability.max) / step + 1e-6);
-    const current = Number(settings.exposureCompensation ?? state.cameraDesiredControls.exposureCompensation ?? 0);
-    const currentIndex = Q.clamp(Math.round(current / step), minIndex, maxIndex);
-    state.exposureCapability = { ...capability, step, minIndex, maxIndex };
-    state.currentExposure = currentIndex * step;
-    elements.exposureIndexRange.min = String(minIndex);
-    elements.exposureIndexRange.max = String(maxIndex);
+    const rawCurrent = Number(settings.exposureCompensation ?? state.cameraDesiredControls.exposureCompensation ?? 0);
+    const current = Number.isFinite(rawCurrent) ? rawCurrent : 0;
+    const currentIndex = Model.capabilityIndexForValue(indexedRange, current);
+    state.exposureCapability = { ...capability, ...indexedRange };
+    state.currentExposure = Model.capabilityValueForIndex(indexedRange, currentIndex);
+    elements.exposureIndexRange.min = String(indexedRange.minIndex);
+    elements.exposureIndexRange.max = String(indexedRange.maxIndex);
     elements.exposureIndexRange.step = "1";
     elements.exposureIndexRange.value = String(currentIndex);
     elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
+    elements.exposureIndexRange.setAttribute("aria-valuetext", Q.formatEv(state.currentExposure));
+    elements.exposureIndexRange.disabled = false;
+    elements.exposureResetButton.disabled = false;
+    elements.exposureAvailability.hidden = true;
     elements.exposureSettingField.hidden = false;
   }
 
@@ -138,7 +253,12 @@ if (typeof window !== "undefined") (() => {
       || !Number.isFinite(Number(capability.min)) || !Number.isFinite(Number(capability.max))
       || Number(capability.max) <= Number(capability.min)) {
       state.focusCapability = null;
-      elements.manualFocusField.hidden = true;
+      elements.manualFocusRange.disabled = true;
+      elements.focusResetButton.disabled = true;
+      elements.manualFocusValue.value = "端末AF";
+      elements.manualFocusRange.setAttribute("aria-valuetext", "端末のオートフォーカス");
+      elements.manualFocusAvailability.hidden = false;
+      elements.manualFocusField.hidden = false;
       return;
     }
 
@@ -158,6 +278,10 @@ if (typeof window !== "undefined") (() => {
     elements.manualFocusValue.value = (settings.focusMode === "manual" || state.cameraDesiredControls.focusMode === "manual")
       ? focusValueLabel(current, state.focusCapability)
       : "自動";
+    elements.manualFocusRange.setAttribute("aria-valuetext", elements.manualFocusValue.value);
+    elements.manualFocusRange.disabled = false;
+    elements.focusResetButton.disabled = false;
+    elements.manualFocusAvailability.hidden = true;
     elements.manualFocusField.hidden = false;
   }
 
@@ -194,6 +318,8 @@ if (typeof window !== "undefined") (() => {
 
   Q.invalidateCameraController = () => {
     clearFocusTimer();
+    latestZoomRequestId += 1;
+    zoomTaskRunner?.clear();
     state.cameraControlGeneration += 1;
     state.cameraControlTrack = null;
     state.cameraControlQueue = Promise.resolve();
@@ -203,6 +329,8 @@ if (typeof window !== "undefined") (() => {
 
   Q.initializeCameraController = () => {
     clearFocusTimer();
+    latestZoomRequestId += 1;
+    zoomTaskRunner?.clear();
     state.cameraControlGeneration += 1;
     state.cameraControlTrack = state.videoTrack || null;
     state.cameraControlQueue = Promise.resolve();
@@ -216,7 +344,7 @@ if (typeof window !== "undefined") (() => {
     state.cameraControlQueue = state.cameraControlQueue
       .catch(() => undefined)
       .then(async () => {
-        if (!track || track !== state.videoTrack || generation !== state.cameraControlGeneration || track.readyState === "ended") {
+        if (!controlContextIsCurrent(track, generation)) {
           return { accepted: false, stale: true };
         }
         return operation(track, generation);
@@ -224,28 +352,31 @@ if (typeof window !== "undefined") (() => {
     return state.cameraControlQueue;
   }
 
-  async function applyConstraintSet(track, patch) {
+  async function applyConstraintSet(track, generation, patch) {
     if (!Object.keys(patch).length) return { accepted: false, error: new Error("No supported camera constraints") };
     const existingConstraints = track.getConstraints?.() ?? {};
     const attempts = Model.buildConstraintAttempts(existingConstraints, patch);
     let finalError = null;
     for (const constraints of attempts) {
+      if (!controlContextIsCurrent(track, generation)) return { accepted: false, stale: true };
       try {
         await track.applyConstraints(constraints);
+        if (!controlContextIsCurrent(track, generation)) return { accepted: false, stale: true };
         return { accepted: true, constraints };
       } catch (error) {
+        if (!controlContextIsCurrent(track, generation)) return { accepted: false, stale: true };
         finalError = error;
       }
     }
     return { accepted: false, error: finalError || new Error("Constraint was rejected") };
   }
 
-  async function readAppliedSetting(track, key, expected, tolerance = 0.001) {
+  async function readAppliedSetting(track, generation, key, expected, tolerance = 0.001) {
     const delays = [0, 90, 220, 420];
     let lastValue;
     for (const delay of delays) {
       if (delay) await wait(delay);
-      if (track !== state.videoTrack || track.readyState === "ended") return { verified: false, stale: true, value: lastValue };
+      if (!controlContextIsCurrent(track, generation)) return { verified: false, stale: true, value: lastValue };
       const value = track.getSettings?.()?.[key];
       if (value !== undefined) lastValue = value;
       if (typeof expected === "boolean" && value === expected) return { verified: true, value };
@@ -260,28 +391,45 @@ if (typeof window !== "undefined") (() => {
 
   Q.applyManagedCameraControls = (updates = {}, {
     ephemeral = {}, verifyKey = null, expectedValue = undefined, tolerance = 0.001,
-  } = {}) => enqueueControlOperation(async (track) => {
+  } = {}) => enqueueControlOperation(async (track, generation) => {
     const nextDesired = Model.mergeDesired(state.cameraDesiredControls, updates);
-    const patch = Model.buildManagedConstraintPatch(nextDesired, state.capabilities, ephemeral);
+    const patch = Model.buildManagedConstraintPatch(
+      nextDesired,
+      state.capabilities,
+      ephemeral,
+      getSupportedConstraintFlags(),
+    );
     state.cameraControlState = "APPLYING";
-    const result = await applyConstraintSet(track, patch);
+    const result = await applyConstraintSet(track, generation, patch);
+    if (result.stale || !controlContextIsCurrent(track, generation)) {
+      return { ...result, accepted: false, stale: true, patch };
+    }
     if (!result.accepted) {
       state.cameraControlState = "ERROR";
       return result;
     }
 
-    state.cameraDesiredControls = nextDesired;
-    state.cameraControlState = "READY";
     let verification = { verified: null, value: undefined };
     if (verifyKey) {
       const expected = expectedValue === undefined ? nextDesired[verifyKey] : expectedValue;
-      verification = await readAppliedSetting(track, verifyKey, expected, tolerance);
+      verification = await readAppliedSetting(track, generation, verifyKey, expected, tolerance);
+      if (verification.stale || !controlContextIsCurrent(track, generation)) {
+        return { ...result, ...verification, accepted: false, stale: true, patch };
+      }
+    }
+    // A resolved applyConstraints() only proves that the request was accepted.
+    // Do not preserve an unconfirmed value in later combined control patches.
+    if (verification.verified === false) {
+      state.cameraControlState = "UNVERIFIED";
+    } else {
+      state.cameraDesiredControls = nextDesired;
+      state.cameraControlState = "READY";
     }
     return { ...result, ...verification, patch };
   });
 
   Q.applyContinuousFocus = async ({ silent = true } = {}) => {
-    if (!state.videoTrack || !getFocusModes().includes("continuous")) return false;
+    if (!state.videoTrack || recordingLocksCameraControls() || !getFocusModes().includes("continuous")) return false;
     clearFocusTimer();
     const result = await Q.applyManagedCameraControls({ focusMode: "continuous", focusDistance: null }, {
       verifyKey: "focusMode",
@@ -329,22 +477,53 @@ if (typeof window !== "undefined") (() => {
     return false;
   };
 
-  Q.enhancedApplyZoom = async (rawValue) => {
-    const capability = state.capabilities.zoom;
-    if (!state.videoTrack || !capability) return;
-    const value = Q.roundToCapabilityStep(rawValue, capability, 0.1);
-    const tolerance = Q.normalizeStep(capability.step, 0.1) / 2 + 1e-4;
-    const result = await Q.applyManagedCameraControls({ zoom: value }, {
-      verifyKey: "zoom", expectedValue: value, tolerance,
-    });
+  // Pointer/range input can outpace hardware. Keep one operation in flight and only the latest pending value.
+  zoomTaskRunner = Model.createLatestTaskRunner(async ({ id, track, generation, value, tolerance }) => {
+    if (!controlContextIsCurrent(track, generation) || recordingLocksCameraControls()) return;
+    let result;
+    try {
+      result = await Q.applyManagedCameraControls({ zoom: value }, {
+        verifyKey: "zoom", expectedValue: value, tolerance,
+      });
+    } catch (error) {
+      if (id === latestZoomRequestId) {
+        console.error(error);
+        showToast("ズームを適用できませんでした");
+      }
+      return;
+    }
+    if (id !== latestZoomRequestId || result.stale) return;
     if (!result.accepted) {
       console.error(result.error);
       showToast("ズームを適用できませんでした");
       return;
     }
-    state.currentZoom = result.verified ? Number(result.value) : value;
+    const observed = Number(result.value);
+    if (result.verified === false) {
+      if (Number.isFinite(observed)) state.currentZoom = observed;
+      elements.zoomRange.value = String(state.currentZoom);
+      elements.zoomValue.value = `${state.currentZoom.toFixed(1)}×`;
+      showToast("ズームの反映を確認できませんでした");
+      return;
+    }
+    state.currentZoom = Number.isFinite(observed) ? observed : value;
     elements.zoomRange.value = String(state.currentZoom);
     elements.zoomValue.value = `${state.currentZoom.toFixed(1)}×`;
+  });
+
+  Q.enhancedApplyZoom = (rawValue) => {
+    const capability = state.capabilities.zoom;
+    if (!state.videoTrack || !capability || recordingLocksCameraControls()) return Promise.resolve();
+    const value = Q.roundToCapabilityStep(rawValue, capability, 0.1);
+    const tolerance = Q.normalizeStep(capability.step, 0.1) / 2 + 1e-4;
+    latestZoomRequestId += 1;
+    return zoomTaskRunner.submit({
+      id: latestZoomRequestId,
+      track: state.videoTrack,
+      generation: state.cameraControlGeneration,
+      value,
+      tolerance,
+    });
   };
 
   Q.applyExposureIndex = async (rawIndex) => {
@@ -353,7 +532,7 @@ if (typeof window !== "undefined") (() => {
     const capability = state.exposureCapability;
     if (!state.videoTrack || !capability) return;
     const index = Q.clamp(Math.round(Number(rawIndex)), capability.minIndex, capability.maxIndex);
-    const value = Number((index * capability.step).toFixed(6));
+    const value = Model.capabilityValueForIndex(capability, index);
     const result = await Q.applyManagedCameraControls({ exposureCompensation: value }, {
       verifyKey: "exposureCompensation", expectedValue: value, tolerance: capability.step / 2 + 1e-4,
     });
@@ -362,17 +541,28 @@ if (typeof window !== "undefined") (() => {
       showToast("明るさを適用できませんでした");
       return;
     }
-    state.currentExposure = result.verified ? Number(result.value) : value;
-    elements.exposureIndexRange.value = String(Math.round(state.currentExposure / capability.step));
+    const observed = Number(result.value);
+    if (result.verified === false) {
+      if (Number.isFinite(observed)) state.currentExposure = observed;
+      elements.exposureIndexRange.value = String(Model.capabilityIndexForValue(capability, state.currentExposure));
+      elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
+      elements.exposureIndexRange.setAttribute("aria-valuetext", Q.formatEv(state.currentExposure));
+      showToast("明るさの反映を確認できませんでした");
+      return;
+    }
+    state.currentExposure = Number.isFinite(observed) ? observed : value;
+    elements.exposureIndexRange.value = String(Model.capabilityIndexForValue(capability, state.currentExposure));
     elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
+    elements.exposureIndexRange.setAttribute("aria-valuetext", Q.formatEv(state.currentExposure));
   };
 
   Q.scheduleExposureIndex = (rawIndex) => {
     const capability = state.exposureCapability;
     if (!capability) return;
     const index = Q.clamp(Math.round(Number(rawIndex)), capability.minIndex, capability.maxIndex);
-    const value = Number((index * capability.step).toFixed(6));
+    const value = Model.capabilityValueForIndex(capability, index);
     elements.exposureIndexValue.value = Q.formatEv(value);
+    elements.exposureIndexRange.setAttribute("aria-valuetext", Q.formatEv(value));
     window.clearTimeout(state.exposureApplyTimer);
     state.exposureApplyTimer = window.setTimeout(() => Q.applyExposureIndex(index), CONTROL_DEBOUNCE_MS);
   };
@@ -382,7 +572,7 @@ if (typeof window !== "undefined") (() => {
     state.manualFocusApplyTimer = null;
     clearFocusTimer();
     const capability = state.focusCapability;
-    if (!state.videoTrack || !capability) return;
+    if (!state.videoTrack || !capability || recordingLocksCameraControls()) return;
     const index = Q.clamp(Math.round(Number(rawIndex)), 0, capability.count);
     const value = Q.roundToCapabilityStep(Number(capability.min) + index * capability.step, capability, 0.01);
     const result = await Q.applyManagedCameraControls({ focusMode: "manual", focusDistance: value }, {
@@ -393,24 +583,39 @@ if (typeof window !== "undefined") (() => {
       showToast("手動ピントを適用できませんでした");
       return;
     }
-    const actual = result.verified ? Number(result.value) : value;
+    const observed = Number(result.value);
+    if (result.verified === false) {
+      if (Number.isFinite(observed)) {
+        elements.manualFocusRange.value = String(Math.round((observed - Number(capability.min)) / capability.step));
+        elements.manualFocusValue.value = focusValueLabel(observed, capability);
+      } else {
+        elements.manualFocusValue.value = "要求（反映未確認）";
+      }
+      elements.manualFocusRange.setAttribute("aria-valuetext", elements.manualFocusValue.value);
+      Q.updateFocusSupportBadge("ピント: 手動要求（未確認）");
+      showToast("手動ピントの反映を確認できませんでした");
+      return;
+    }
+    const actual = Number.isFinite(observed) ? observed : value;
     elements.manualFocusRange.value = String(Math.round((actual - Number(capability.min)) / capability.step));
     elements.manualFocusValue.value = focusValueLabel(actual, capability);
-    Q.updateFocusSupportBadge("AF: 手動");
+    elements.manualFocusRange.setAttribute("aria-valuetext", elements.manualFocusValue.value);
+    Q.updateFocusSupportBadge("ピント: 手動要求");
   };
 
   Q.scheduleManualFocus = (rawIndex) => {
     const capability = state.focusCapability;
-    if (!capability) return;
+    if (!capability || recordingLocksCameraControls()) return;
     const index = Q.clamp(Math.round(Number(rawIndex)), 0, capability.count);
     const value = Q.roundToCapabilityStep(Number(capability.min) + index * capability.step, capability, 0.01);
     elements.manualFocusValue.value = focusValueLabel(value, capability);
+    elements.manualFocusRange.setAttribute("aria-valuetext", elements.manualFocusValue.value);
     window.clearTimeout(state.manualFocusApplyTimer);
     state.manualFocusApplyTimer = window.setTimeout(() => Q.applyManualFocus(index), CONTROL_DEBOUNCE_MS);
   };
 
   Q.resetFocus = async () => {
-    if (!state.stream) return;
+    if (!state.stream || recordingLocksCameraControls()) return;
     window.clearTimeout(state.manualFocusApplyTimer);
     state.manualFocusApplyTimer = null;
     clearFocusTimer();
@@ -436,7 +641,7 @@ if (typeof window !== "undefined") (() => {
   };
 
   Q.enhancedToggleTorch = async () => {
-    if (!state.videoTrack || state.capabilities.torch !== true || state.recorder?.state === "recording") return;
+    if (!state.videoTrack || state.capabilities.torch !== true || recordingLocksCameraControls()) return;
     const next = !Boolean(state.cameraDesiredControls.torch ?? state.torchEnabled);
     const result = await Q.applyManagedCameraControls({ torch: next }, {
       verifyKey: "torch", expectedValue: next,
@@ -444,6 +649,12 @@ if (typeof window !== "undefined") (() => {
     if (!result.accepted) {
       console.error(result.error);
       showToast("ライトを適用できませんでした");
+      return;
+    }
+    if (result.verified === false) {
+      state.torchEnabled = Boolean(result.value);
+      elements.torchButton.setAttribute("aria-pressed", String(state.torchEnabled));
+      showToast("ライトの反映を確認できませんでした");
       return;
     }
     state.torchEnabled = result.verified === null || result.verified ? next : Boolean(result.value);
@@ -456,13 +667,13 @@ if (typeof window !== "undefined") (() => {
   }
 
   Q.enhancedFocusAt = async (clientX, clientY) => {
-    if (!state.videoTrack || state.recorder?.state === "recording") return;
+    if (!state.videoTrack || recordingLocksCameraControls()) return;
     const rect = elements.video.getBoundingClientRect();
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
 
     clearFocusTimer();
     const modes = getFocusModes();
-    const hasPointFocus = Model.hasOwn(state.capabilities, "pointsOfInterest");
+    const hasPointFocus = getSupportedConstraintFlags().pointsOfInterest === true;
     const pointMode = modes.includes("single-shot") ? "single-shot" : modes.includes("continuous") ? "continuous" : null;
 
     if (hasPointFocus && pointMode) {
