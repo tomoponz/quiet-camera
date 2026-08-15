@@ -119,6 +119,15 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .review-actions { margin-top:auto; grid-template-columns:1fr; }
 .dialog-help { margin:12px 0 0; color:var(--muted); font-size:.75rem; line-height:1.5; text-align:center; }
 
+.camera-permission-dialog { width:min(calc(100% - 24px),560px); }
+.camera-permission-message { margin:0; color:#d8dbe1; line-height:1.65; }
+.camera-permission-instructions { margin-top:16px; padding:14px; border:1px solid var(--border); border-radius:14px; background:#191c21; }
+.camera-permission-instructions h3 { margin:0 0 8px; font-size:.95rem; }
+.camera-permission-instructions ul { margin:0; padding-left:1.25rem; color:#d8dbe1; line-height:1.65; }
+.camera-permission-instructions li + li { margin-top:8px; }
+.camera-permission-actions { grid-template-columns:1fr 1fr; }
+.camera-permission-actions #closeCameraPermissionButton { grid-column:1/-1; }
+
 .gallery-dialog { width:min(calc(100% - 24px),960px); }
 .gallery-header { position:sticky; top:-18px; z-index:3; padding:18px 0 10px; background:#111318; }
 .gallery-toolbar { position:sticky; top:55px; z-index:2; display:flex; flex-wrap:wrap; gap:8px; padding:8px 0 14px; background:#111318; }

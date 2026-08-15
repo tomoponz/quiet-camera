@@ -11,12 +11,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
   <title>Quiet Camera</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=20260815.3">
+  <link rel="manifest" href="./manifest.webmanifest?v=20260815.4">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./styles.css?v=20260815.3">
-  <link rel="stylesheet" href="./fullscreen.css?v=20260815.3">
-  <link rel="stylesheet" href="./camera-enhancements.css?v=20260815.3">
+  <link rel="stylesheet" href="./styles.css?v=20260815.4">
+  <link rel="stylesheet" href="./fullscreen.css?v=20260815.4">
+  <link rel="stylesheet" href="./camera-enhancements.css?v=20260815.4">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
@@ -191,6 +191,27 @@
     <div id="settingsSheetBody"></div>
   </dialog>
 
+  <dialog id="cameraPermissionDialog" class="sheet-dialog camera-permission-dialog" aria-labelledby="cameraPermissionTitle" aria-describedby="cameraPermissionMessage">
+    <div class="dialog-header">
+      <h2 id="cameraPermissionTitle">カメラを利用できません</h2>
+      <button id="closeCameraPermissionIconButton" class="close-button" type="button" aria-label="閉じる">×</button>
+    </div>
+    <p id="cameraPermissionMessage" class="camera-permission-message">端末またはブラウザの設定で、このサイトのカメラ使用を許可してください。設定を変更したら、「もう一度試す」を押してください。</p>
+    <div id="cameraPermissionInstructions" class="camera-permission-instructions" hidden>
+      <h3>設定方法</h3>
+      <ul>
+        <li><strong>iPhone・iPad：</strong>設定アプリで使用中のブラウザを開き、「カメラ」をONにします。Safariではページメニューの「Webサイトの設定」も確認してください。</li>
+        <li><strong>Android：</strong>アドレスバーのサイト情報から「権限」→「カメラ」を許可します。必要な場合は、設定アプリでもブラウザのカメラ権限を許可してください。</li>
+        <li><strong>PC：</strong>アドレスバー左側のサイト情報から、カメラの使用を許可してください。</li>
+      </ul>
+    </div>
+    <div class="dialog-actions camera-permission-actions">
+      <button id="cameraPermissionHelpButton" class="secondary-button" type="button" aria-expanded="false" aria-controls="cameraPermissionInstructions">設定方法を見る</button>
+      <button id="retryCameraPermissionButton" class="primary-button" type="button">もう一度試す</button>
+      <button id="closeCameraPermissionButton" class="secondary-button" type="button">閉じる</button>
+    </div>
+  </dialog>
+
   <dialog id="privacyDialog" class="sheet-dialog info-dialog" aria-labelledby="privacyTitle">
     <div class="dialog-header"><h2 id="privacyTitle">プライバシー</h2><button id="closePrivacyButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
     <ul>
@@ -207,17 +228,17 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./storage.js?v=20260815.3" defer></script>
-  <script src="./camera-ratio-model.js?v=20260815.3" defer></script>
-  <script src="./core.js?v=20260815.3" defer></script>
-  <script src="./photo.js?v=20260815.3" defer></script>
-  <script src="./video.js?v=20260815.3" defer></script>
-  <script src="./ui.js?v=20260815.3" defer></script>
-  <script src="./fullscreen.js?v=20260815.3" defer></script>
-  <script src="./camera-enhancements-core.js?v=20260815.3" defer></script>
-  <script src="./camera-devices.js?v=20260815.3" defer></script>
-  <script src="./camera-controls.js?v=20260815.3" defer></script>
-  <script src="./camera-capture.js?v=20260815.3" defer></script>
-  <script src="./camera-enhancements.js?v=20260815.3" defer></script>
+  <script src="./storage.js?v=20260815.4" defer></script>
+  <script src="./camera-ratio-model.js?v=20260815.4" defer></script>
+  <script src="./core.js?v=20260815.4" defer></script>
+  <script src="./photo.js?v=20260815.4" defer></script>
+  <script src="./video.js?v=20260815.4" defer></script>
+  <script src="./ui.js?v=20260815.4" defer></script>
+  <script src="./fullscreen.js?v=20260815.4" defer></script>
+  <script src="./camera-enhancements-core.js?v=20260815.4" defer></script>
+  <script src="./camera-devices.js?v=20260815.4" defer></script>
+  <script src="./camera-controls.js?v=20260815.4" defer></script>
+  <script src="./camera-capture.js?v=20260815.4" defer></script>
+  <script src="./camera-enhancements.js?v=20260815.4" defer></script>
 </body>
 </html>

@@ -278,7 +278,8 @@
       elements.permissionPanel.hidden = false;
       setCameraInteractionReady(false);
       hideAdvancedCameraControls();
-      showToast(describeCameraError(error));
+      if (error?.name === "NotAllowedError") showCameraPermissionDialog();
+      else showToast(describeCameraError(error));
     }
   };
 

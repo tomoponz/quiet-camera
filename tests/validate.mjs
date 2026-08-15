@@ -40,12 +40,12 @@ for (const file of ["index.html", "privacy.html", ...styles, ...scripts, "manife
 if (!serviceWorker.includes('const CACHE_PREFIX = "quiet-camera-"')) throw new Error("Cache cleanup must be scoped to Quiet Camera");
 if (!serviceWorker.includes("key.startsWith(CACHE_PREFIX)")) throw new Error("Service worker may delete caches belonging to other apps");
 if (!serviceWorker.includes("networkFirst(event.request)")) throw new Error("Static app assets must use network-first refresh behavior");
-const assetVersion = "20260815.3";
+const assetVersion = "20260815.4";
 for (const file of [...styles, ...scripts, "manifest.webmanifest"]) {
   if (!html.includes(`./${file}?v=${assetVersion}`)) throw new Error(`HTML asset version is stale: ${file}`);
   if (!serviceWorker.includes(`./${file}?v=${assetVersion}`)) throw new Error(`Service worker asset version is stale: ${file}`);
 }
-if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v17"')) throw new Error("Service worker cache version is stale");
+if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v18"')) throw new Error("Service worker cache version is stale");
 if (!privacyHtml.includes(`./styles.css?v=${assetVersion}`)) throw new Error("Privacy page asset version is stale");
 
 const htmlScripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map((match) => match[1].split("?")[0]);
@@ -73,6 +73,11 @@ for (const requiredId of [
   "recoveryNotice",
   "retryRecoveryButton",
   "discardRecoveryButton",
+  "cameraPermissionDialog",
+  "cameraPermissionHelpButton",
+  "cameraPermissionInstructions",
+  "retryCameraPermissionButton",
+  "closeCameraPermissionButton",
 ]) {
   if (!ids.has(requiredId)) throw new Error(`Missing required control: ${requiredId}`);
 }
@@ -200,9 +205,15 @@ for (const rule of [
   if (!enhancementCss.includes(rule)) throw new Error(`Short landscape layout is incomplete: ${rule}`);
 }
 
-for (const dialogId of ["reviewDialog", "galleryDialog", "settingsDialog", "privacyDialog"]) {
+for (const dialogId of ["reviewDialog", "galleryDialog", "settingsDialog", "cameraPermissionDialog", "privacyDialog"]) {
   const dialog = html.match(new RegExp(`<dialog[^>]*id="${dialogId}"[^>]*>`))?.[0] || "";
   if (!/aria-labelledby="[^"]+"/.test(dialog)) throw new Error(`${dialogId} must have an accessible name`);
+}
+if (!html.includes("端末またはブラウザの設定で、このサイトのカメラ使用を許可してください")
+  || !coreJs.includes("showCameraPermissionDialog")
+  || !deviceJs.includes('if (error?.name === "NotAllowedError") showCameraPermissionDialog()')
+  || !read("ui.js").includes("await startCamera()")) {
+  throw new Error("Denied camera access must show browser-neutral guidance with a retry action");
 }
 for (const rangeId of ["manualFocusRange", "exposureIndexRange"]) {
   if (!html.includes(`for="${rangeId}"`)) throw new Error(`${rangeId} must have a visible label`);
