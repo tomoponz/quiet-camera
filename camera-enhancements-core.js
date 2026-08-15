@@ -4,7 +4,7 @@
   const Q = {};
   window.QuietCameraEnhancements = Q;
 
-  Q.APP_VERSION = "2026.08.15.2";
+  Q.APP_VERSION = "2026.08.15.3";
   Q.DEVICE_STORAGE_KEY = "quiet-camera-selected-device";
   Q.MOBILE_QUERY = window.matchMedia("(max-width: 700px)");
   Q.originalStartCamera = startCamera;

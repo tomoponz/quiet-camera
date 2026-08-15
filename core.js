@@ -91,6 +91,7 @@ const DEFAULT_SETTINGS = {
   mode: "photo",
   timer: 0,
   ratio: "4:3",
+  videoRatio: "16:9",
   grid: false,
   photoFormat: "image/jpeg",
   photoQuality: "0.92",
@@ -113,6 +114,7 @@ const state = {
   mode: savedSettings.mode === "video" ? "video" : "photo",
   timerSeconds: Number(savedSettings.timer) || 0,
   ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "4:3",
+  videoRatio: ["4:3", "1:1", "16:9"].includes(savedSettings.videoRatio) ? savedSettings.videoRatio : "16:9",
   torchEnabled: false,
   currentZoom: 1,
   currentExposure: 0,
@@ -152,7 +154,8 @@ const state = {
   pendingRecoverySessions: [],
 };
 
-const ratioSequence = ["4:3", "1:1", "16:9"];
+const ratioModel = window.QuietCameraRatioModel;
+const ratioSequence = [...ratioModel.RATIO_SEQUENCE];
 const timerSequence = [0, 3, 10];
 const PHOTO_EXTENSIONS = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
 
@@ -205,6 +208,7 @@ function collectSettings() {
     mode: state.mode,
     timer: state.timerSeconds,
     ratio: state.ratio,
+    videoRatio: state.videoRatio,
     grid: !elements.gridOverlay.hidden,
     photoFormat: elements.photoFormatSelect.value,
     photoQuality: elements.photoQualitySelect.value,
@@ -227,8 +231,45 @@ function syncTimerButton() {
 }
 
 function syncRatioButton() {
-  elements.ratioButton.textContent = state.ratio;
-  elements.ratioButton.setAttribute("aria-label", `画像比率: ${state.ratio.replace(":", "対")}`);
+  const ratio = state.mode === "video" ? state.videoRatio : state.ratio;
+  const mediaKind = state.mode === "video" ? "動画" : "写真";
+  elements.ratioButton.textContent = ratio;
+  elements.ratioButton.setAttribute("aria-label", `${mediaKind}比率: ${ratio.replace(":", "対")}`);
+}
+
+function ratioValue(ratio) {
+  return ratioModel.ratioValue(ratio);
+}
+
+function getVideoTrackTargetAspectRatio() {
+  return ratioModel.targetTrackAspectRatio(state.videoRatio);
+}
+
+function normalizedVideoTrackAspectRatio(settings = {}) {
+  return ratioModel.normalizedTrackAspectRatio(settings);
+}
+
+function ratiosApproximatelyMatch(first, second, tolerance = 0.035) {
+  return ratioModel.approximatelyMatches(first, second, tolerance);
+}
+
+function syncVideoRatioWithTrack(settings, { announce = true } = {}) {
+  if (state.mode !== "video") return true;
+  const actualRatio = normalizedVideoTrackAspectRatio(settings);
+  const requestedRatio = ratioValue(state.videoRatio);
+  if (!actualRatio || ratiosApproximatelyMatch(actualRatio, requestedRatio)) return true;
+
+  const actualLabel = ratioModel.closestRatioLabel(actualRatio);
+  const requestedLabel = state.videoRatio;
+  if (!actualLabel || requestedLabel === actualLabel) return false;
+  state.videoRatio = actualLabel;
+  syncRatioButton();
+  applyStageRatio();
+  persistCurrentSettings();
+  if (announce) {
+    showToast(`このカメラは${requestedLabel}動画に対応しないため、実映像に近い${actualLabel}へ戻しました`);
+  }
+  return false;
 }
 
 function applySavedSettings() {
@@ -387,11 +428,12 @@ function updateModeUi() {
   elements.videoModeButton.setAttribute("aria-pressed", String(!photoMode));
   [elements.photoFormatField, elements.photoQualityField, elements.autoReviewField, elements.selfieMirrorField].forEach((item) => { item.hidden = !photoMode; });
   [elements.microphoneField, elements.videoResolutionField, elements.videoFrameRateField, elements.videoQualityField, elements.recordingLimitField].forEach((item) => { item.hidden = photoMode; });
-  elements.ratioButton.hidden = !photoMode;
+  elements.ratioButton.hidden = false;
   elements.shutterButton.classList.toggle("video", !photoMode);
   elements.shutterButton.setAttribute("aria-label", photoMode ? "写真を撮る" : "録画を開始する");
   elements.permissionCopy.textContent = photoMode ? "写真はサーバーへ送信しません。マイクと位置情報は使用しません。" : "動画はサーバーへ送信しません。マイクはONにした場合だけ使用します。";
   syncMicrophoneStatus();
+  syncRatioButton();
   applyStageRatio();
   updateMediaStatus();
 }
@@ -414,18 +456,20 @@ function cycleTimer() {
 }
 
 function applyStageRatio() {
-  const ratio = state.mode === "video" ? "16:9" : state.ratio;
+  const ratio = state.mode === "video" ? state.videoRatio : state.ratio;
   elements.cameraStage.classList.remove("ratio-4-3", "ratio-1-1", "ratio-16-9");
   elements.cameraStage.classList.add(`ratio-${ratio.replace(":", "-")}`);
 }
 
-function cycleRatio() {
-  if (state.mode !== "photo") return;
-  const currentIndex = ratioSequence.indexOf(state.ratio);
-  state.ratio = ratioSequence[(currentIndex + 1) % ratioSequence.length];
+async function cycleRatio() {
+  if (state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive")) return;
+  const stateKey = state.mode === "video" ? "videoRatio" : "ratio";
+  const currentIndex = ratioSequence.indexOf(state[stateKey]);
+  state[stateKey] = ratioSequence[(currentIndex + 1) % ratioSequence.length];
   syncRatioButton();
   applyStageRatio();
   persistCurrentSettings();
+  if (state.mode === "video" && state.stream) await startCamera();
 }
 
 function toggleGrid() {
@@ -485,7 +529,7 @@ async function runCountdown(seconds) {
   }
   elements.countdown.textContent = "";
 }
-function getTargetRatio() { if (state.ratio === "1:1") return 1; if (state.ratio === "16:9") return 16 / 9; return 4 / 3; }
+function getTargetRatio() { return ratioValue(state.ratio); }
 function calculateCrop(sourceWidth, sourceHeight, targetRatio) {
   const sourceRatio = sourceWidth / sourceHeight;
   if (sourceRatio > targetRatio) {

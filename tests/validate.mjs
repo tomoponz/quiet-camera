@@ -12,6 +12,7 @@ const duplicateIds = [...new Set(idValues.filter((id, index) => idValues.indexOf
 if (duplicateIds.length) throw new Error(`Duplicate DOM IDs: ${duplicateIds.join(", ")}`);
 const scripts = [
   "storage.js",
+  "camera-ratio-model.js",
   "core.js",
   "photo.js",
   "video.js",
@@ -39,12 +40,12 @@ for (const file of ["index.html", "privacy.html", ...styles, ...scripts, "manife
 if (!serviceWorker.includes('const CACHE_PREFIX = "quiet-camera-"')) throw new Error("Cache cleanup must be scoped to Quiet Camera");
 if (!serviceWorker.includes("key.startsWith(CACHE_PREFIX)")) throw new Error("Service worker may delete caches belonging to other apps");
 if (!serviceWorker.includes("networkFirst(event.request)")) throw new Error("Static app assets must use network-first refresh behavior");
-const assetVersion = "20260815.2";
+const assetVersion = "20260815.3";
 for (const file of [...styles, ...scripts, "manifest.webmanifest"]) {
   if (!html.includes(`./${file}?v=${assetVersion}`)) throw new Error(`HTML asset version is stale: ${file}`);
   if (!serviceWorker.includes(`./${file}?v=${assetVersion}`)) throw new Error(`Service worker asset version is stale: ${file}`);
 }
-if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v16"')) throw new Error("Service worker cache version is stale");
+if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v17"')) throw new Error("Service worker cache version is stale");
 if (!privacyHtml.includes(`./styles.css?v=${assetVersion}`)) throw new Error("Privacy page asset version is stale");
 
 const htmlScripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map((match) => match[1].split("?")[0]);
@@ -119,6 +120,25 @@ for (const feature of ["enumerateDevices", "devicechange", "selectedDeviceId", "
   if (!(deviceJs + read("camera-enhancements.js")).includes(feature)) throw new Error(`Missing camera-device feature: ${feature}`);
 }
 if (!deviceJs.includes('focusMode = { ideal: "continuous" }')) throw new Error("Initial continuous AF preference is missing");
+if (!deviceJs.includes("supported.aspectRatio") || !deviceJs.includes("getVideoTrackTargetAspectRatio")
+  || !deviceJs.includes("syncVideoRatioWithTrack(settings)")) {
+  throw new Error("Video ratios must constrain and verify the actual camera track");
+}
+if (!deviceJs.includes('video.aspectRatio = { exact: getVideoTrackTargetAspectRatio() }')
+  || !deviceJs.includes('video.resizeMode = { ideal: "crop-and-scale" }')
+  || !deviceJs.includes("enforceVideoRatio: false")) {
+  throw new Error("Video ratios must use exact crop constraints with a camera-start fallback");
+}
+
+const ratioModel = read("camera-ratio-model.js");
+for (const feature of ["targetTrackAspectRatio", "normalizedTrackAspectRatio", "approximatelyMatches", "closestRatioLabel"]) {
+  if (!ratioModel.includes(feature)) throw new Error(`Missing camera ratio model feature: ${feature}`);
+}
+const coreJs = read("core.js");
+if (!coreJs.includes('videoRatio: "16:9"') || !coreJs.includes('const stateKey = state.mode === "video" ? "videoRatio" : "ratio"')
+  || !coreJs.includes("if (state.mode === \"video\" && state.stream) await startCamera()")) {
+  throw new Error("Photo and video ratios must remain independent and restart video capture when changed");
+}
 
 const photoJs = read("photo.js");
 if (!photoJs.includes("ImageCapture") || !photoJs.includes("takePhoto")) throw new Error("High-resolution photo capture is missing");
@@ -169,6 +189,15 @@ const enhancementCss = read("camera-enhancements.css");
 if (!enhancementCss.includes("#settingsSheetBody .settings-panel")) throw new Error("Mobile settings sheet does not expose the settings panel");
 if (!enhancementCss.includes("#exposureControl") || !enhancementCss.includes("display: none !important")) {
   throw new Error("Legacy floating exposure control must stay hidden");
+}
+for (const rule of [
+  "grid-template-columns: 104px minmax(0, 1fr) 76px",
+  "grid-column: 3",
+  "grid-row: 1 / 3",
+  "html:not(.immersive-mode) .camera-stage",
+  "left: -114px",
+]) {
+  if (!enhancementCss.includes(rule)) throw new Error(`Short landscape layout is incomplete: ${rule}`);
 }
 
 for (const dialogId of ["reviewDialog", "galleryDialog", "settingsDialog", "privacyDialog"]) {

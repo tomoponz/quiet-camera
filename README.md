@@ -32,6 +32,7 @@
 ### 動画
 
 - MP4またはWebMの自動選択
+- 4:3・1:1・16:9の比率切替（カメラが選択比率を実出力できない場合は、録画ファイルと表示が食い違わないよう実映像に近い比率へ戻す）
 - マイクOFF／ON（初期値は毎回OFF）
 - 動画モードでは設定を開かなくても「現在 MIC OFF／ON」を常時表示し、表示からマイク設定へ直接移動
 - 自動・720p・1080p
@@ -49,6 +50,7 @@
 
 - スマートフォンでは設定を下部シートに表示
 - 十分な高さがあるPCでは設定パネルを表示し、短い画面・横向き・全画面では下部シートへ切替
+- 高さの短いスマートフォンの通常横画面では、プレビューと履歴・シャッター・設定を左右に配置
 - 420px未満の画面でも、写真形式、マイク、画質、ピント、露出などを操作可能
 - 写真・動画の全画面撮影モード
 - スマートフォンでは下部シート、PCでは2カラムの履歴ビューア
@@ -132,10 +134,12 @@ https://tomoponz.github.io/quiet-camera/
 ```bash
 node tests/validate.mjs
 node tests/camera-controls.test.cjs
+node tests/camera-ratio.test.cjs
 node tests/video-bitrate.test.cjs
 node tests/service-worker.test.cjs
 node tests/storage.test.cjs
 node --check storage.js
+node --check camera-ratio-model.js
 node --check core.js
 node --check photo.js
 node --check video.js

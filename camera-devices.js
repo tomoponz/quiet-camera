@@ -24,7 +24,7 @@
     return generation === state.cameraStartGeneration;
   }
 
-  function buildVideoConstraints({ useSelectedDevice = true, relaxed = false } = {}) {
+  function buildVideoConstraints({ useSelectedDevice = true, relaxed = false, enforceVideoRatio = true } = {}) {
     const resolution = elements.videoResolutionSelect.value;
     const frameRate = elements.videoFrameRateSelect.value;
     const supported = navigator.mediaDevices?.getSupportedConstraints?.() ?? {};
@@ -35,6 +35,10 @@
 
     // This is only an initial preference. The controller re-applies focus after capabilities are known.
     if (supported.focusMode) video.focusMode = { ideal: "continuous" };
+    if (state.mode === "video" && enforceVideoRatio && supported.aspectRatio) {
+      video.aspectRatio = { exact: getVideoTrackTargetAspectRatio() };
+      if (supported.resizeMode) video.resizeMode = { ideal: "crop-and-scale" };
+    }
 
     if (!relaxed) {
       if (resolution === "720") {
@@ -65,9 +69,11 @@
     const candidates = [
       { audio: buildAudioConstraints(), video: buildVideoConstraints() },
       { audio: buildAudioConstraints(), video: buildVideoConstraints({ relaxed: true }) },
+      { audio: buildAudioConstraints(), video: buildVideoConstraints({ enforceVideoRatio: false }) },
     ];
     if (state.selectedDeviceId) {
       candidates.push({ audio: buildAudioConstraints(), video: buildVideoConstraints({ useSelectedDevice: false }) });
+      candidates.push({ audio: buildAudioConstraints(), video: buildVideoConstraints({ useSelectedDevice: false, enforceVideoRatio: false }) });
     }
 
     let finalError = null;
@@ -207,6 +213,7 @@
       if (["user", "environment"].includes(settings.facingMode)) state.facingMode = settings.facingMode;
       state.isFrontCamera = (settings.facingMode || state.facingMode) === "user";
       elements.video.classList.toggle("mirrored", state.isFrontCamera);
+      syncVideoRatioWithTrack(settings);
       const resolution = settings.width && settings.height
         ? `${settings.width}×${settings.height}`
         : state.isFrontCamera ? "前面カメラ" : "カメラ";
