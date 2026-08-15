@@ -465,6 +465,15 @@ elements.galleryButton.addEventListener("click", openGallery);
 elements.closeReviewButton.addEventListener("click", () => closeDialog(elements.reviewDialog));
 elements.closeGalleryButton.addEventListener("click", () => closeDialog(elements.galleryDialog));
 elements.closePrivacyButton.addEventListener("click", () => closeDialog(elements.privacyDialog));
+elements.closeCameraPermissionButton.addEventListener("click", () => closeDialog(elements.cameraPermissionDialog));
+elements.closeCameraPermissionIconButton.addEventListener("click", () => closeDialog(elements.cameraPermissionDialog));
+elements.cameraPermissionHelpButton.addEventListener("click", () => {
+  setCameraPermissionHelpExpanded(elements.cameraPermissionHelpButton.getAttribute("aria-expanded") !== "true");
+});
+elements.retryCameraPermissionButton.addEventListener("click", async () => {
+  closeDialog(elements.cameraPermissionDialog);
+  await startCamera();
+});
 elements.deleteButton.addEventListener("click", deleteSelectedMedia);
 elements.downloadButton.addEventListener("click", downloadMedia);
 elements.shareButton.addEventListener("click", shareMedia);
@@ -479,6 +488,8 @@ elements.updateButton.addEventListener("click", requestServiceWorkerUpdate);
 elements.reviewDialog.addEventListener("click", handleDialogBackdrop);
 elements.galleryDialog.addEventListener("click", handleDialogBackdrop);
 elements.privacyDialog.addEventListener("click", handleDialogBackdrop);
+elements.cameraPermissionDialog.addEventListener("click", handleDialogBackdrop);
+elements.cameraPermissionDialog.addEventListener("close", () => setCameraPermissionHelpExpanded(false));
 elements.reviewDialog.addEventListener("close", () => {
   window.clearTimeout(state.briefReviewTimer);
   state.briefReviewTimer = null;

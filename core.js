@@ -82,6 +82,14 @@ const elements = {
   privacyButton: document.querySelector("#privacyButton"),
   privacyDialog: document.querySelector("#privacyDialog"),
   closePrivacyButton: document.querySelector("#closePrivacyButton"),
+  cameraPermissionDialog: document.querySelector("#cameraPermissionDialog"),
+  cameraPermissionTitle: document.querySelector("#cameraPermissionTitle"),
+  cameraPermissionMessage: document.querySelector("#cameraPermissionMessage"),
+  cameraPermissionInstructions: document.querySelector("#cameraPermissionInstructions"),
+  cameraPermissionHelpButton: document.querySelector("#cameraPermissionHelpButton"),
+  retryCameraPermissionButton: document.querySelector("#retryCameraPermissionButton"),
+  closeCameraPermissionButton: document.querySelector("#closeCameraPermissionButton"),
+  closeCameraPermissionIconButton: document.querySelector("#closeCameraPermissionIconButton"),
   installButton: document.querySelector("#installButton"),
   updateButton: document.querySelector("#updateButton"),
   toast: document.querySelector("#toast"),
@@ -201,6 +209,21 @@ function syncMicrophoneStatus() {
     : "現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。";
   elements.microphoneStatusDetail.textContent = detail;
   elements.microphoneStatusButton.setAttribute("aria-label", detail);
+}
+
+function setCameraPermissionHelpExpanded(expanded) {
+  elements.cameraPermissionInstructions.hidden = !expanded;
+  elements.cameraPermissionHelpButton.setAttribute("aria-expanded", String(expanded));
+  elements.cameraPermissionHelpButton.textContent = expanded ? "設定方法を閉じる" : "設定方法を見る";
+}
+
+function showCameraPermissionDialog() {
+  const needsMicrophone = microphoneEnabled();
+  const devices = needsMicrophone ? "カメラとマイク" : "カメラ";
+  elements.cameraPermissionTitle.textContent = `${devices}を利用できません`;
+  elements.cameraPermissionMessage.textContent = `端末またはブラウザの設定で、このサイトの${devices}使用を許可してください。設定を変更したら、「もう一度試す」を押してください。`;
+  setCameraPermissionHelpExpanded(false);
+  if (!elements.cameraPermissionDialog.open) elements.cameraPermissionDialog.showModal();
 }
 
 function collectSettings() {
@@ -393,7 +416,7 @@ async function startCamera() {
     elements.cameraStatus.textContent = "許可が必要";
     elements.startButton.disabled = false;
     elements.permissionPanel.hidden = false;
-    if (error?.name === "NotAllowedError") showToast(microphoneEnabled() ? "カメラとマイクを許可してください" : "カメラを許可してください");
+    if (error?.name === "NotAllowedError") showCameraPermissionDialog();
     else if (error?.name === "NotFoundError") showToast("利用できるカメラが見つかりません");
     else showToast("カメラを起動できませんでした");
   }
