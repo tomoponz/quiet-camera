@@ -68,6 +68,7 @@ function updateMediaStatus() {
 }
 
 function releaseGalleryDialogResources() {
+  window.QuietCameraVideoPreview?.clearGallery();
   for (const url of state.galleryObjectUrls.values()) URL.revokeObjectURL(url);
   state.galleryObjectUrls.clear();
   elements.galleryGrid.replaceChildren();
@@ -165,8 +166,7 @@ function renderGallery() {
       image.decoding = "async";
       visual.append(image);
     } else {
-      visual.classList.add("video-placeholder");
-      visual.innerHTML = "<span>▶</span><small>VIDEO</small>";
+      window.QuietCameraVideoPreview.mountGallery(media, visual);
     }
     const info = document.createElement("div");
     info.className = "gallery-info";
@@ -491,6 +491,8 @@ elements.privacyDialog.addEventListener("click", handleDialogBackdrop);
 elements.cameraPermissionDialog.addEventListener("click", handleDialogBackdrop);
 elements.cameraPermissionDialog.addEventListener("close", () => setCameraPermissionHelpExpanded(false));
 elements.reviewDialog.addEventListener("close", () => {
+  // close is queued: a rapid reopen must not clear the newly selected media.
+  if (elements.reviewDialog.open) return;
   window.clearTimeout(state.briefReviewTimer);
   state.briefReviewTimer = null;
   clearSelectedMedia();

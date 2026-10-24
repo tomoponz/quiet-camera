@@ -28,6 +28,10 @@ jobs:
         run: node tests/service-worker.test.cjs
       - name: IndexedDB blocked-open tests
         run: node tests/storage.test.cjs
+      - name: Settings sheet flick regression tests
+        run: node tests/settings-sheet-motion.test.cjs
+      - name: Device-relative layout regression tests
+        run: node tests/device-layout.test.cjs
       - name: Check every application script
         run: |
           for file in \
@@ -35,15 +39,32 @@ jobs:
             camera-ratio-model.js \
             core.js \
             photo.js \
+            video-preview.js \
             video.js \
             ui.js \
+            media-dialog-scroll.js \
+            photo-review.js \
             fullscreen.js \
             camera-enhancements-core.js \
             camera-devices.js \
             camera-controls.js \
             camera-capture.js \
+            settings-sheet-motion.js \
             camera-enhancements.js \
+            device-layout-model.js \
+            camera-overlay.js \
             service-worker.js; do
             echo "Checking $file"
             node --check "$file"
           done
+
+  browser-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Synthetic browser and aggregate regressions
+        run: node tests/run-all.mjs --browser

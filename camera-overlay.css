@@ -1,0 +1,40 @@
+/* A portrait coordinate plane stays attached to the device. The stage is
+   mapped separately so the full source stays upright without crop/stretch. */
+html.overlay-camera-layout,html.overlay-camera-layout body{width:100%;height:100%;min-height:0;overflow:hidden}
+html.overlay-camera-layout .app{width:100%;max-width:none;height:100dvh;min-height:0;margin:0;padding:0;display:block;overflow:hidden}
+html.overlay-camera-layout #settingsDock{display:none}
+html.overlay-camera-layout .camera-surface{position:fixed;top:var(--camera-view-top,0px);left:var(--camera-view-left,0px);width:var(--camera-view-width,100vw);height:var(--camera-view-height,100dvh);padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);display:block;overflow:hidden;isolation:isolate;background:#000}
+html.overlay-camera-layout #cameraSurface .camera-stage{position:absolute;top:var(--overlay-frame-y,0px);left:var(--overlay-frame-x,0px);width:var(--overlay-frame-width,100%);height:var(--overlay-frame-height,100%);flex:none;max-width:none;max-height:none;aspect-ratio:auto!important;border:0;border-radius:0;box-shadow:none;overflow:hidden}
+html.overlay-camera-layout #cameraSurface .camera-stage video{object-fit:contain!important;border-radius:0}
+html.overlay-camera-layout #cameraSurface .permission-panel{padding:16px;overflow:auto;align-content:safe center;border-radius:0}
+html.overlay-camera-layout .camera-device-controls{position:absolute;z-index:10;left:0;top:0;width:var(--device-width,100vw);height:var(--device-height,100dvh);transform:var(--device-matrix);transform-origin:0 0;pointer-events:none}
+html.overlay-camera-layout .camera-device-controls button,html.overlay-camera-layout .camera-device-controls input{pointer-events:auto}
+.device-upright{display:inline-grid;place-items:center;vertical-align:middle;transform:rotate(var(--device-ink-turn,0deg));transform-origin:center;max-width:100%;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+html.overlay-camera-layout #cameraSurface .mode-control-row{position:absolute;z-index:14;top:var(--overlay-mode-top,8px);left:max(8px,var(--device-safe-left));right:max(8px,var(--device-safe-right));bottom:auto;width:auto;height:var(--overlay-mode-height,54px);min-height:54px;max-width:none;margin:0;padding:0;display:block}
+html.overlay-camera-layout #cameraSurface .mode-switcher{position:absolute;top:50%;left:50%;right:auto;width:var(--overlay-mode-width,164px);max-width:none;min-width:98px;transform:translate(-50%,-50%);display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);background:rgba(12,14,18,.58);box-shadow:0 2px 8px #0007}
+html.overlay-camera-layout #cameraSurface .microphone-status{position:absolute;top:50%;left:calc(50% + var(--overlay-mode-width,164px)/2 + 6px);right:auto;bottom:auto;width:var(--overlay-mic-width,64px);min-width:44px;height:54px;min-height:54px;max-height:none;padding:4px 5px;transform:translateY(-50%);display:grid;place-items:center;border-radius:14px;background:rgba(8,10,14,.66);box-shadow:0 2px 8px #0008}
+html.overlay-camera-layout #cameraSurface .microphone-status>.device-upright{display:flex;flex-direction:column;gap:1px;overflow:visible;max-width:none}
+html.overlay-camera-layout #cameraSurface .microphone-status-current{display:block;font-size:.65rem;line-height:1.05}
+html.overlay-camera-layout #cameraSurface .microphone-state-line{display:flex;gap:3px;align-items:center;justify-content:center;font-size:var(--overlay-mic-font-size,.75rem);font-weight:800;line-height:1.05}
+html.overlay-camera-layout #cameraSurface .microphone-status strong{font:inherit;letter-spacing:0}
+html.overlay-camera-layout #cameraSurface .camera-top-controls{position:absolute;z-index:12;top:var(--overlay-toolbar-top,70px);left:max(8px,var(--device-safe-left));right:max(8px,var(--device-safe-right));bottom:auto;width:auto;height:auto;min-height:0;padding:0;margin:0;transform:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none}
+html.overlay-camera-layout #cameraSurface .camera-top-controls>button{width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;padding:4px;background:rgba(8,10,14,.48);box-shadow:0 2px 8px #0007;backdrop-filter:blur(4px)}
+html.overlay-camera-layout #cameraSurface .camera-top-controls>button[aria-pressed="true"]{background:#fff;color:#050607}
+html.overlay-camera-layout #cameraSurface .bottom-controls{position:absolute;z-index:12;left:max(8px,var(--device-safe-left));right:max(8px,var(--device-safe-right));top:auto;bottom:max(8px,var(--device-safe-bottom));width:auto;height:82px;min-height:82px;padding:0;margin:0;transform:none;display:grid;grid-template-columns:64px 1fr 64px;grid-template-rows:82px;align-items:center;justify-items:center;border:0!important;border-radius:0!important;background:none!important;box-shadow:none!important;backdrop-filter:none!important}
+html.overlay-camera-layout #cameraSurface .bottom-controls::before,html.overlay-camera-layout #cameraSurface .bottom-controls::after{content:none!important;display:none!important}
+html.overlay-camera-layout #cameraSurface .bottom-controls>button{background:rgba(8,10,14,.48);box-shadow:0 2px 8px #0008;backdrop-filter:blur(4px)}
+html.overlay-camera-layout #cameraSurface .bottom-controls>.shutter-button{background:rgba(0,0,0,.18)}
+html.overlay-camera-layout #cameraSurface .preview-button>.device-upright{width:100%;height:100%;overflow:visible}
+html.overlay-camera-layout #cameraSurface .zoom-control{bottom:var(--overlay-zoom-bottom,112px);left:calc((100% + var(--device-safe-left) - var(--device-safe-right))/2);width:min(350px,calc(100% - var(--device-safe-left) - var(--device-safe-right) - 24px));pointer-events:auto}
+html.overlay-camera-layout #cameraSurface .status-bar{bottom:var(--overlay-status-bottom,94px);left:max(14px,var(--device-safe-left));right:max(14px,var(--device-safe-right));pointer-events:none}
+html.overlay-camera-layout #cameraSurface .recording-badge{position:absolute;z-index:11;top:var(--overlay-recording-top,124px);left:calc((100% + max(12px,var(--device-safe-left)) - max(12px,var(--device-safe-right)))/2);right:auto;max-width:calc(100% - max(12px,var(--device-safe-left)) - max(12px,var(--device-safe-right)));transform:translateX(-50%);overflow:visible}
+html.overlay-camera-layout #cameraSurface[data-device-rotation="90"] button>.device-upright,html.overlay-camera-layout #cameraSurface[data-device-rotation="270"] button>.device-upright{max-width:36px}
+html.overlay-camera-layout #cameraSurface[data-device-rotation="90"] #galleryButton>.device-upright,html.overlay-camera-layout #cameraSurface[data-device-rotation="270"] #galleryButton>.device-upright{max-width:none}
+html.overlay-camera-layout #cameraSurface[data-device-rotation="90"] #microphoneStatusButton>.device-upright,html.overlay-camera-layout #cameraSurface[data-device-rotation="270"] #microphoneStatusButton>.device-upright{max-width:none}
+.photo-frame-guide{position:absolute;z-index:3;pointer-events:none;border:1px dashed rgba(255,255,255,.85);box-shadow:0 0 0 1px #0005}
+html.overlay-camera-layout .info-dialog .app-header{display:flex!important;margin:24px 0 12px}
+html.overlay-camera-layout .info-dialog .camera-note,html.overlay-camera-layout .info-dialog .about-app{display:block!important}
+html.overlay-camera-layout .settings-panel>.header-actions{grid-column:1/-1;justify-content:flex-end}
+html.overlay-camera-layout.immersive-mode #cameraSurface .camera-top-controls{top:max(8px,var(--device-safe-top));left:auto;right:max(8px,var(--device-safe-right));width:auto;transform:none;display:flex}
+html.overlay-camera-layout.immersive-mode #cameraSurface .camera-top-controls>:not(#fullscreenButton){display:none!important}
+html.overlay-camera-layout.immersive-mode #cameraSurface .camera-top-controls .fullscreen-button{min-width:48px;width:48px;height:48px;flex-basis:48px}

@@ -394,6 +394,9 @@ async function finalizeRecording() {
     if (!blob.size) throw new Error("録画データを生成できませんでした");
     if (blob.size > HARD_RECORDING_LIMIT_BYTES) throw new Error("録画が安全な確定サイズを超えています");
     const metadata = await validateVideoBlob(blob);
+    let poster = null;
+    try { poster = await window.QuietCameraVideoPreview.createPoster(blob, { duration: recording.durationMs / 1000 }); }
+    catch (error) { console.warn("Video saved without a preview frame.", error); }
 
     const extension = type.includes("mp4") ? "mp4" : "webm";
     const actualResolution = metadata.width && metadata.height
@@ -405,6 +408,10 @@ async function finalizeRecording() {
       kind: "video",
       blob,
       previewBlob: blob,
+      thumbnailBlob: poster?.blob || null,
+      thumbnailTime: poster?.time || 0,
+      width: metadata.width,
+      height: metadata.height,
       extension,
       mimeType: type,
       duration: recording.durationMs,

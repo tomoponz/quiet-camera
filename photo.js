@@ -85,6 +85,7 @@ async function canvasToThumbnailBlob(sourceCanvas, maxDimension = 480) {
 }
 
 function releaseSelectedMediaUrls() {
+  window.QuietCameraVideoPreview?.clearReview();
   elements.reviewVideo.pause();
   elements.reviewVideo.removeAttribute("src");
   elements.reviewVideo.load();
@@ -114,13 +115,16 @@ function selectMedia(media) {
     elements.reviewImage.hidden = true;
     elements.reviewImage.removeAttribute("src");
     elements.reviewTitle.textContent = "動画";
+    window.QuietCameraVideoPreview?.showReview(media);
   }
   elements.reviewMeta.textContent = media.meta;
+  document.dispatchEvent(new Event("quietcamera:reviewchange"));
 }
 
 function clearSelectedMedia() {
   releaseSelectedMediaUrls();
   state.selectedMedia = null;
+  document.dispatchEvent(new Event("quietcamera:reviewchange"));
 }
 
 async function addMedia(media, { showReview = true } = {}) {

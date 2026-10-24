@@ -1,7 +1,7 @@
 {
   "name": "Quiet Camera",
   "short_name": "Quiet Camera",
-  "description": "写真と動画を端末内で処理する、プライバシー重視のカメラPWA。",
+  "description": "広告・ログイン不要。写真と動画を端末内だけで処理・保存する、プライバシー重視のブラウザカメラPWA。",
   "lang": "ja",
   "id": "./",
   "start_url": "./",

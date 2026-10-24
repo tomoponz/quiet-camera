@@ -6,6 +6,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const html = read("index.html");
 const privacyHtml = read("privacy.html");
 const manifest = JSON.parse(read("manifest.webmanifest"));
+const sitemap = read("sitemap.xml");
 const idValues = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const ids = new Set(idValues);
 const duplicateIds = [...new Set(idValues.filter((id, index) => idValues.indexOf(id) !== index))];
@@ -15,16 +16,22 @@ const scripts = [
   "camera-ratio-model.js",
   "core.js",
   "photo.js",
+  "video-preview.js",
   "video.js",
   "ui.js",
+  "media-dialog-scroll.js",
+  "photo-review.js",
   "fullscreen.js",
   "camera-enhancements-core.js",
   "camera-devices.js",
   "camera-controls.js",
   "camera-capture.js",
+  "settings-sheet-motion.js",
   "camera-enhancements.js",
+  "device-layout-model.js",
+  "camera-overlay.js",
 ];
-const styles = ["styles.css", "fullscreen.css", "camera-enhancements.css"];
+const styles = ["styles.css", "fullscreen.css", "camera-enhancements.css", "camera-overlay.css"];
 const missingFiles = [...scripts, ...styles].filter((file) => !fs.existsSync(path.join(root, file)));
 if (missingFiles.length) throw new Error(`Missing assets: ${missingFiles.join(", ")}`);
 
@@ -40,13 +47,16 @@ for (const file of ["index.html", "privacy.html", ...styles, ...scripts, "manife
 if (!serviceWorker.includes('const CACHE_PREFIX = "quiet-camera-"')) throw new Error("Cache cleanup must be scoped to Quiet Camera");
 if (!serviceWorker.includes("key.startsWith(CACHE_PREFIX)")) throw new Error("Service worker may delete caches belonging to other apps");
 if (!serviceWorker.includes("networkFirst(event.request)")) throw new Error("Static app assets must use network-first refresh behavior");
-const assetVersion = "20260815.4";
+const assetVersion = "20261024.1";
 for (const file of [...styles, ...scripts, "manifest.webmanifest"]) {
   if (!html.includes(`./${file}?v=${assetVersion}`)) throw new Error(`HTML asset version is stale: ${file}`);
   if (!serviceWorker.includes(`./${file}?v=${assetVersion}`)) throw new Error(`Service worker asset version is stale: ${file}`);
 }
-if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v18"')) throw new Error("Service worker cache version is stale");
+if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v28"')) throw new Error("Service worker cache version is stale");
 if (!privacyHtml.includes(`./styles.css?v=${assetVersion}`)) throw new Error("Privacy page asset version is stale");
+for (const asset of ["sitemap.xml", "images/quiet-camera-og.png"]) {
+  if (!fs.existsSync(path.join(root, asset))) throw new Error(`Missing SEO asset: ${asset}`);
+}
 
 const htmlScripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map((match) => match[1].split("?")[0]);
 if (JSON.stringify(htmlScripts) !== JSON.stringify(scripts)) {
@@ -86,13 +96,13 @@ const fullscreenCss = read("fullscreen.css");
 if (!fullscreenCss.includes("immersive-mode")) throw new Error("Missing immersive fullscreen styles");
 const baseCss = read("styles.css");
 for (const rule of [
-  ".camera-stage.ratio-4-3 { width:min(100%,50.25dvh); }",
-  ".camera-stage.ratio-1-1 { width:min(100%,67dvh); }",
-  ".camera-stage.ratio-16-9 { width:min(100%,37.6875dvh); }",
+  ".camera-stage.ratio-4-3 { width:100%; }",
+  ".camera-stage.ratio-1-1 { width:100%; }",
+  ".camera-stage.ratio-16-9 { width:100%; }",
 ]) {
   if (!baseCss.includes(rule)) throw new Error(`Short portrait viewport must preserve capture ratio: ${rule}`);
 }
-if (!html.includes("現在 MIC") || !html.includes("音声は録音されません")
+if (!html.includes("microphone-state-line") || !html.includes("音声は録音されません")
   || !read("core.js").includes("syncMicrophoneStatus")
   || !read("camera-enhancements.js").includes("microphoneStatusButton")) {
   throw new Error("Video mode must expose a persistent microphone state and direct settings shortcut");
@@ -221,6 +231,22 @@ for (const rangeId of ["manualFocusRange", "exposureIndexRange"]) {
 if (/id="recordingBadge"[^>]*aria-live/.test(html)) throw new Error("Frequently updated recording metrics must not be a live region");
 if (/id="galleryGrid"[^>]*aria-live/.test(html)) throw new Error("Gallery cards must not be announced as one large live region");
 if (!html.includes("Content-Security-Policy")) throw new Error("The static deployment needs a restrictive CSP");
+for (const marker of [
+  'rel="canonical" href="https://tomoponz.github.io/quiet-camera/"',
+  'name="robots" content="index,follow,max-image-preview:large"',
+  'property="og:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png"',
+  'name="twitter:card" content="summary_large_image"',
+  'itemtype="https://schema.org/SoftwareApplication"',
+  'itemprop="price" content="0"',
+]) {
+  if (!html.includes(marker)) throw new Error(`Missing SEO metadata: ${marker}`);
+}
+for (const url of ["https://tomoponz.github.io/quiet-camera/", "https://tomoponz.github.io/quiet-camera/privacy.html"]) {
+  if (!sitemap.includes(`<loc>${url}</loc>`)) throw new Error(`Sitemap is missing canonical URL: ${url}`);
+}
+if (!manifest.description.includes("広告・ログイン不要") || !html.includes("広告やログインなしで使えるブラウザカメラ")) {
+  throw new Error("The app needs visible, user-first search copy that matches its metadata");
+}
 if (!html.includes('rel="apple-touch-icon"') || !manifest.icons?.some((icon) => icon.sizes === "192x192")
   || !manifest.icons?.some((icon) => icon.sizes === "512x512" && icon.purpose.includes("maskable"))) {
   throw new Error("Installable PNG and Apple touch icons are required");

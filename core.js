@@ -98,7 +98,7 @@ const elements = {
 const DEFAULT_SETTINGS = {
   mode: "photo",
   timer: 0,
-  ratio: "4:3",
+  ratio: "16:9",
   videoRatio: "16:9",
   grid: false,
   photoFormat: "image/jpeg",
@@ -121,7 +121,7 @@ const state = {
   isFrontCamera: false,
   mode: savedSettings.mode === "video" ? "video" : "photo",
   timerSeconds: Number(savedSettings.timer) || 0,
-  ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "4:3",
+  ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "16:9",
   videoRatio: ["4:3", "1:1", "16:9"].includes(savedSettings.videoRatio) ? savedSettings.videoRatio : "16:9",
   torchEnabled: false,
   currentZoom: 1,
@@ -445,6 +445,8 @@ async function switchCamera() {
 
 function updateModeUi() {
   const photoMode = state.mode === "photo";
+  elements.photoModeButton.closest(".mode-switcher").dataset.mode = photoMode ? "photo" : "video";
+  elements.cameraStage.dataset.captureMode = photoMode ? "photo" : "video";
   elements.photoModeButton.classList.toggle("active", photoMode);
   elements.videoModeButton.classList.toggle("active", !photoMode);
   elements.photoModeButton.setAttribute("aria-pressed", String(photoMode));

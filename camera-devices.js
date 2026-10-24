@@ -2,7 +2,7 @@
 
 (() => {
   const Q = window.QuietCameraEnhancements;
-  const stageControls = elements.cameraStage.querySelector(".camera-top-controls");
+  const stageControls = document.querySelector(".camera-top-controls");
 
   function recordingLocksCamera() {
     return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);

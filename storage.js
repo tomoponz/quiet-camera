@@ -156,6 +156,37 @@ async function getStoredMedia(id) {
   return item || null;
 }
 
+// Match the gallery's createdAt/primary-key order without loading every Blob.
+// The inclusive bound also handles photos with identical capture timestamps.
+async function findAdjacentPhoto(reference, direction) {
+  if (!reference || !Number.isFinite(reference.createdAt) || reference.id == null) return null;
+  if (!["older", "newer"].includes(direction)) throw new TypeError("Unknown photo direction");
+  const database = await openDatabase();
+  const transaction = database.transaction(MEDIA_STORE, "readonly");
+  const done = transactionDone(transaction);
+  const older = direction === "older";
+  // Preserve transaction errors while avoiding a second unhandled rejection if
+  // the cursor request fails before the transaction's completion is awaited.
+  done.catch(() => {});
+  const range = older ? IDBKeyRange.upperBound(reference.createdAt) : IDBKeyRange.lowerBound(reference.createdAt);
+  const result = await new Promise((resolve, reject) => {
+    const request = transaction.objectStore(MEDIA_STORE).index("createdAt").openCursor(range, older ? "prev" : "next");
+    request.addEventListener("success", () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(null); return; }
+      const order = cursor.key === reference.createdAt ? indexedDB.cmp(cursor.primaryKey, reference.id)
+        : cursor.key < reference.createdAt ? -1 : 1;
+      const media = cursor.value;
+      if ((older ? order < 0 : order > 0) && media.kind === "photo") {
+        resolve({ id: cursor.primaryKey, createdAt: cursor.key });
+      } else cursor.continue();
+    });
+    request.addEventListener("error", () => reject(request.error || new Error("前後の写真を読み込めませんでした")), { once: true });
+  });
+  await done;
+  return result;
+}
+
 async function deleteStoredMedia(id) {
   const database = await openDatabase();
   const transaction = database.transaction(MEDIA_STORE, "readwrite");

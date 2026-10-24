@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" class="overlay-camera-layout">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,42 +9,38 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="写真と動画を端末内だけで処理する、プライバシー重視のカメラPWAです。">
-  <title>Quiet Camera</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=20260815.4">
+  <meta name="description" content="広告・ログイン不要。写真と動画を端末内だけで処理・保存するブラウザ無音カメラ。iPadOS・Android・PCの対応ブラウザで利用できます。">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:site_name" content="Quiet Camera">
+  <meta property="og:title" content="Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ">
+  <meta property="og:description" content="広告・ログイン不要。写真と動画を端末内だけで処理・保存する、プライバシー重視のブラウザカメラです。">
+  <meta property="og:url" content="https://tomoponz.github.io/quiet-camera/">
+  <meta property="og:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
+  <meta property="og:image:width" content="1774">
+  <meta property="og:image:height" content="887">
+  <meta property="og:image:alt" content="端末内保存に対応したブラウザカメラQuiet Cameraのイメージ">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ">
+  <meta name="twitter:description" content="広告・ログイン不要。撮影データを端末内だけで処理・保存するブラウザカメラです。">
+  <meta name="twitter:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
+  <link rel="canonical" href="https://tomoponz.github.io/quiet-camera/">
+  <title>Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ</title>
+  <link rel="manifest" href="./manifest.webmanifest?v=20261024.1">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./styles.css?v=20260815.4">
-  <link rel="stylesheet" href="./fullscreen.css?v=20260815.4">
-  <link rel="stylesheet" href="./camera-enhancements.css?v=20260815.4">
+  <link rel="stylesheet" href="./styles.css?v=20261024.1">
+  <link rel="stylesheet" href="./fullscreen.css?v=20261024.1">
+  <link rel="stylesheet" href="./camera-enhancements.css?v=20261024.1">
+  <link rel="stylesheet" href="./camera-overlay.css?v=20261024.1">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
-    <header class="app-header">
-      <div>
-        <p class="eyebrow">LOCAL-ONLY CAMERA</p>
-        <h1>Quiet Camera</h1>
-      </div>
-      <div class="header-actions">
-        <button id="updateButton" class="text-button update-button" type="button" hidden>更新</button>
-        <button id="installButton" class="text-button" type="button" hidden>インストール</button>
-      </div>
-    </header>
-
-    <div class="mode-control-row">
-      <nav class="mode-switcher" aria-label="撮影モード">
-        <button id="photoModeButton" class="mode-button active" type="button" aria-pressed="true">写真</button>
-        <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false" aria-describedby="videoSupportStatus microphoneStatusDetail">動画</button>
-      </nav>
-      <button id="microphoneStatusButton" class="microphone-status microphone-off" type="button" aria-controls="microphoneSelect" hidden>
-        <span aria-hidden="true">現在 MIC</span><strong id="microphoneStatusText">OFF</strong>
-      </button>
-    </div>
-    <p id="videoSupportStatus" class="sr-only" role="status" aria-live="polite"></p>
-    <p id="microphoneStatusDetail" class="sr-only" role="status" aria-live="polite">現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。</p>
-
-    <section id="cameraStage" class="camera-stage ratio-4-3" aria-label="カメラ映像。EnterまたはSpaceで中央へピントを要求" aria-busy="false" tabindex="-1">
+    <div id="cameraSurface" class="camera-surface">
+    <section id="cameraStage" class="camera-stage ratio-16-9" aria-label="カメラ映像。EnterまたはSpaceで中央へピントを要求" aria-busy="false" tabindex="-1">
       <video id="cameraVideo" autoplay muted playsinline></video>
+      <div id="photoFrameGuide" class="photo-frame-guide" hidden aria-hidden="true"></div>
       <canvas id="captureCanvas" hidden></canvas>
 
       <div id="gridOverlay" class="grid-overlay" hidden aria-hidden="true"><span></span><span></span><span></span><span></span></div>
@@ -52,13 +48,7 @@
       <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
       <div id="countdown" class="countdown" aria-live="assertive"></div>
 
-      <div id="recordingBadge" class="recording-badge" hidden>
-        <span class="recording-dot" aria-hidden="true"></span>
-        <span class="sr-only">録画中。 </span>
-        <span class="recording-metric"><span class="sr-only">録画時間 </span><span id="recordingTime" role="timer" aria-live="off">00:00</span></span>
-        <span class="recording-metric"><span class="sr-only">録画サイズ </span><span id="recordingSize">0 MB</span></span>
-        <span id="recordingAudioState">音声なし</span>
-      </div>
+
 
       <div id="permissionPanel" class="permission-panel" role="group" aria-labelledby="permissionTitle" aria-describedby="permissionCopy">
         <p id="permissionTitle" class="permission-title">カメラを起動します</p>
@@ -66,12 +56,41 @@
         <button id="startButton" class="primary-button" type="button">カメラを許可</button>
       </div>
 
-      <div class="camera-top-controls" role="group" aria-label="撮影設定">
+
+
+
+
+
+
+
+    </section>
+    <div id="cameraControls" class="camera-device-controls">
+<div class="mode-control-row">
+      <nav class="mode-switcher" aria-label="撮影モード">
+        <button id="photoModeButton" class="mode-button active" type="button" aria-pressed="true">写真</button>
+        <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false" aria-describedby="videoSupportStatus microphoneStatusDetail">動画</button>
+      </nav>
+      <button id="microphoneStatusButton" class="microphone-status microphone-off" type="button" aria-controls="microphoneSelect" hidden>
+        <span class="microphone-status-current" aria-hidden="true">現在</span><span class="microphone-state-line" aria-hidden="true"><span>MIC</span><strong id="microphoneStatusText">OFF</strong></span>
+      </button>
+    </div>
+    <p id="videoSupportStatus" class="sr-only" role="status" aria-live="polite"></p>
+    <p id="microphoneStatusDetail" class="sr-only" role="status" aria-live="polite">現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。</p>
+
+
+<div id="recordingBadge" class="recording-badge" hidden>
+        <span class="recording-dot" aria-hidden="true"></span>
+        <span class="sr-only">録画中。 </span>
+        <span class="recording-metric"><span class="sr-only">録画時間 </span><span id="recordingTime" role="timer" aria-live="off">00:00</span></span>
+        <span class="recording-metric"><span class="sr-only">録画サイズ </span><span id="recordingSize">0 MB</span></span>
+        <span id="recordingAudioState">音声なし</span>
+      </div>
+<div class="camera-top-controls" role="group" aria-label="撮影設定">
         <button id="switchButton" class="icon-button" type="button" aria-label="前後カメラを切り替える" title="カメラ切替">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10l-1.5-2M17 17H7l1.5 2M20 8a8 8 0 0 1-1 8M4 16a8 8 0 0 1 1-8"/></svg>
         </button>
         <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー: オフ">OFF</button>
-        <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率: 4対3">4:3</button>
+        <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率: 16対9">16:9</button>
         <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg>
         </button>
@@ -85,27 +104,44 @@
           </svg>
         </button>
       </div>
-
-      <div id="zoomControl" class="zoom-control" hidden>
+<div id="zoomControl" class="zoom-control" hidden>
         <label for="zoomRange">ズーム</label>
         <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1">
         <output id="zoomValue" for="zoomRange">1.0×</output>
       </div>
-
-      <div id="exposureControl" class="exposure-control" hidden>
+<div id="exposureControl" class="exposure-control" hidden>
         <label for="exposureRange">明るさ</label>
         <input id="exposureRange" type="range" min="0" max="0" step="0.1" value="0">
         <output id="exposureValue" for="exposureRange">0.0</output>
       </div>
-
-      <div class="status-bar">
+<div class="status-bar">
         <span id="cameraStatus" role="status" aria-live="polite">待機中</span>
         <span id="mediaStatus">JPEG</span>
       </div>
+<section class="bottom-controls" aria-label="撮影操作">
+      <button id="galleryButton" class="preview-button" type="button" aria-label="撮影履歴を見る">
+        <span id="galleryPlaceholder">履歴</span>
+        <img id="previewThumbnail" alt="直前の撮影結果" hidden>
+        <span id="videoThumbnailMark" class="video-thumbnail-mark" hidden>▶</span>
+        <span id="galleryCount" class="gallery-count" hidden>0</span>
+      </button>
+      <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled><span></span></button>
+      <button id="settingsButton" class="round-text-button settings-button" type="button" aria-label="設定を開く" title="設定">⚙</button>
     </section>
+    </div>
+    </div>
+
+
+
+
 
     <div id="settingsDock">
     <section id="settingsPanel" class="settings-panel" aria-label="保存と録画の設定">
+<div class="header-actions">
+        <button id="updateButton" class="text-button update-button" type="button" hidden>更新</button>
+        <button id="installButton" class="text-button" type="button" hidden>インストール</button>
+      </div>
+
       <label id="cameraSourceField" class="setting-field camera-source-field" hidden><span>カメラ</span><select id="cameraSourceSelect"><option value="">自動選択</option></select></label>
       <div id="manualFocusField" class="setting-field range-setting" hidden>
         <label class="setting-label" for="manualFocusRange">ピント</label>
@@ -131,24 +167,24 @@
     </section>
     </div>
 
-    <section class="bottom-controls" aria-label="撮影操作">
-      <button id="galleryButton" class="preview-button" type="button" aria-label="撮影履歴を見る">
-        <span id="galleryPlaceholder">履歴</span>
-        <img id="previewThumbnail" alt="直前の撮影結果" hidden>
-        <span id="videoThumbnailMark" class="video-thumbnail-mark" hidden>▶</span>
-        <span id="galleryCount" class="gallery-count" hidden>0</span>
-      </button>
-      <button id="shutterButton" class="shutter-button" type="button" aria-label="写真を撮る" disabled><span></span></button>
-      <button id="settingsButton" class="round-text-button settings-button" type="button" aria-label="設定を開く" title="設定">⚙</button>
-    </section>
-    <p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。アプリは効果音を再生しませんが、端末やOSの動作を含む無音は保証できません。</p>
+
+
+
   </main>
 
   <dialog id="reviewDialog" class="sheet-dialog review-dialog" aria-labelledby="reviewTitle" aria-describedby="reviewMeta">
     <div class="review-layout">
-      <div class="review-viewer">
-        <img id="reviewImage" class="review-media" alt="撮影した写真" hidden>
-        <video id="reviewVideo" class="review-media" controls playsinline preload="metadata" hidden></video>
+      <div class="review-media-column">
+        <div id="reviewViewer" class="review-viewer">
+          <img id="reviewImage" class="review-media" alt="撮影した写真" draggable="false" hidden>
+          <video id="reviewVideo" class="review-media" controls playsinline preload="auto" hidden></video>
+          <p id="reviewVideoStatus" class="video-preview-status" role="status" aria-live="polite" hidden></p>
+        </div>
+        <nav id="reviewPhotoNavigation" class="review-photo-nav" aria-label="撮影順に写真を切り替える" hidden>
+          <button id="reviewNewerPhoto" class="secondary-button" type="button" aria-controls="reviewImage" disabled>← 新しい写真</button>
+          <button id="reviewOlderPhoto" class="secondary-button" type="button" aria-controls="reviewImage" disabled>古い写真 →</button>
+          <p id="reviewPhotoStatus" class="review-photo-status" role="status" aria-live="polite"></p>
+        </nav>
       </div>
       <aside class="review-sidebar">
         <div class="dialog-header">
@@ -187,6 +223,10 @@
   </dialog>
 
   <dialog id="settingsDialog" class="sheet-dialog settings-dialog" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
+    <div class="settings-sheet-sizing" role="group" aria-label="設定パネルの高さ">
+      <div id="settingsResizeHandle" class="settings-resize-handle" role="separator" tabindex="0" aria-label="設定パネルの高さ。上下にドラッグ、または上下矢印キーで調整。上へ勢いよく払うと最大に広げる。下へ勢いよく払う、またはEscapeで閉じる" aria-orientation="horizontal" aria-controls="settingsSheetBody" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="画面の約半分">
+      </div>
+    </div>
     <div class="dialog-header"><div><h2 id="settingsTitle">カメラ設定</h2><p id="settingsDescription" class="review-meta">利用できる機能だけ表示します。</p></div><button id="closeSettingsButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
     <div id="settingsSheetBody"></div>
   </dialog>
@@ -224,21 +264,49 @@
     </ul>
     <p class="warning">無断撮影、盗撮、撮影禁止場所での使用など、違法・迷惑な撮影や録画には使用しないでください。</p>
     <p class="privacy-link"><a href="./privacy.html">プライバシーポリシー全文</a></p>
-  </dialog>
+
+<header class="app-header">
+      <div>
+        <p class="eyebrow">LOCAL-ONLY CAMERA</p>
+        <h1>Quiet Camera</h1>
+      </div>
+
+    </header>
+<p class="camera-note">人物や私有地を撮影・録画するときは、相手の同意と撮影場所のルールを守ってください。アプリは効果音を再生しませんが、端末やOSの動作を含む無音は保証できません。</p>
+<section class="about-app" aria-labelledby="aboutTitle" itemscope itemtype="https://schema.org/SoftwareApplication">
+      <link itemprop="url" href="https://tomoponz.github.io/quiet-camera/">
+      <link itemprop="image" href="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
+      <meta itemprop="applicationCategory" content="MultimediaApplication">
+      <h2 id="aboutTitle"><span itemprop="name">Quiet Camera</span>について</h2>
+      <p itemprop="description">Quiet Cameraは、広告やログインなしで使えるブラウザカメラです。アプリ独自のシャッター音を再生せず、写真・動画を端末内のブラウザで処理・保存します。撮影データを運営者のサーバーへ自動送信しません。</p>
+      <p>iPadOS・Android・PCの対応ブラウザで利用できます。端末やOSの動作を含む完全な無音は保証できません。</p>
+      <div class="about-meta">
+        <span itemprop="offers" itemscope itemtype="https://schema.org/Offer"><meta itemprop="price" content="0"><meta itemprop="priceCurrency" content="JPY"><strong>料金:</strong> 無料</span>
+        <span><strong>動作環境:</strong> <span itemprop="operatingSystem">iPadOS・Android・PCの対応ブラウザ</span></span>
+      </div>
+      <p class="about-links"><a href="./privacy.html">プライバシーポリシー</a><span aria-hidden="true">・</span><a href="https://github.com/tomoponz/quiet-camera" target="_blank" rel="noopener noreferrer">ソースコード</a></p>
+    </section>
+</dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./storage.js?v=20260815.4" defer></script>
-  <script src="./camera-ratio-model.js?v=20260815.4" defer></script>
-  <script src="./core.js?v=20260815.4" defer></script>
-  <script src="./photo.js?v=20260815.4" defer></script>
-  <script src="./video.js?v=20260815.4" defer></script>
-  <script src="./ui.js?v=20260815.4" defer></script>
-  <script src="./fullscreen.js?v=20260815.4" defer></script>
-  <script src="./camera-enhancements-core.js?v=20260815.4" defer></script>
-  <script src="./camera-devices.js?v=20260815.4" defer></script>
-  <script src="./camera-controls.js?v=20260815.4" defer></script>
-  <script src="./camera-capture.js?v=20260815.4" defer></script>
-  <script src="./camera-enhancements.js?v=20260815.4" defer></script>
+  <script src="./storage.js?v=20261024.1" defer></script>
+  <script src="./camera-ratio-model.js?v=20261024.1" defer></script>
+  <script src="./core.js?v=20261024.1" defer></script>
+  <script src="./photo.js?v=20261024.1" defer></script>
+  <script src="./video-preview.js?v=20261024.1" defer></script>
+  <script src="./video.js?v=20261024.1" defer></script>
+  <script src="./ui.js?v=20261024.1" defer></script>
+  <script src="./media-dialog-scroll.js?v=20261024.1" defer></script>
+  <script src="./photo-review.js?v=20261024.1" defer></script>
+  <script src="./fullscreen.js?v=20261024.1" defer></script>
+  <script src="./camera-enhancements-core.js?v=20261024.1" defer></script>
+  <script src="./camera-devices.js?v=20261024.1" defer></script>
+  <script src="./camera-controls.js?v=20261024.1" defer></script>
+  <script src="./camera-capture.js?v=20261024.1" defer></script>
+  <script src="./settings-sheet-motion.js?v=20261024.1" defer></script>
+  <script src="./camera-enhancements.js?v=20261024.1" defer></script>
+  <script src="./device-layout-model.js?v=20261024.1" defer></script>
+  <script src="./camera-overlay.js?v=20261024.1" defer></script>
 </body>
 </html>
