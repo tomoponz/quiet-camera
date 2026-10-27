@@ -48,7 +48,9 @@ const server=http.createServer((req,res)=>{
 });
 server.listen(0,'127.0.0.1');await once(server,'listening');
 const url=`http://127.0.0.1:${server.address().port}/`;
-const chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),['--headless=new','--remote-debugging-port=0',`--user-data-dir=${scratch}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+// A Linux headless host may have no physical mouse. Declare the synthetic
+// desktop input; touch emulation below must still switch to coarse/no-hover.
+const chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),['--headless=new','--remote-debugging-port=0',`--user-data-dir=${scratch}`,'--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let stderr='';
 const endpoint=await new Promise((resolve,reject)=>{
  const timer=setTimeout(()=>reject(new Error('Chrome startup timed out '+stderr)),15000);
@@ -115,6 +117,7 @@ try{
    for(const [mode,ratio,immersive] of active?[['photo','16:9',false],['video','16:9',false],['video','16:9',true]]:[['photo','16:9',false],['video','16:9',false],['photo','4:3',false],['photo','1:1',false]]){
     await prepare(mode,ratio,immersive);const m=await measure(),key=[i,mode,ratio,immersive].join('-');check('fullscreen pressed state matches fixture '+key,await evaluate('document.getElementById("fullscreenButton").getAttribute("aria-pressed") === String(document.documentElement.classList.contains("immersive-mode"))'),true);(baseline?baselineResults:candidateResults).push({key,spec,...m});
     if(!baseline){
+     check('fixture pointer matches declared mouse/touch input '+key,m.pointer,!spec.touch);check('fixture hover matches declared mouse/touch input '+key,m.hover,!spec.touch);
      const b=baselineResults.find(x=>x.key===key);check('desktop scope matches capability and space '+key,m.enabled,active);
      check('fullscreen toggle state matches immersive class '+key,m.fullscreenPressed,String(immersive));
      if(!active){check('phone and excluded layouts stay byte-for-byte in measured geometry '+key,{stage:m.stage,selector:m.selector,buttons:m.buttons,page:m.page},{stage:b.stage,selector:b.selector,buttons:b.buttons,page:b.page});}

@@ -72,6 +72,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Owned renderer crash preflight
+        env:
+          QC_RECORDING_FILTER: renderer crash
+          QC_RECORDING_BROWSER_OUTPUT: test-results/crash-preflight
+        run: node tests/recording-safety-browser.test.mjs
       - name: Synthetic browser and aggregate regressions
         run: node tests/run-all.mjs --browser
       - name: Preserve synthetic regression failure evidence

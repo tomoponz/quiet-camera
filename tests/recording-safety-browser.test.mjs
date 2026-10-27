@@ -9,6 +9,7 @@ fs.mkdirSync(output,{recursive:true});
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-camera-p1p5-isolated-'));
 const results=[],details={},targets=[],contexts=[],pages=[],exceptions=[],mediaAuditSnapshots=[],crashNotices=[];let socket,chrome,server,seq=0;const pending=new Map();let checks=0;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let traceEvents=[],traceComplete=false;
 function save(){fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({root,profile,origin:details.origin,checks,results,details,exceptions,audit:{nativeMediaCalls:mediaAuditSnapshots.reduce((s,n)=>s+n,0)},permissionChanges:0,existingTrialOrUsbChanges:false},null,2))}
 function check(name,a,b=true){checks++;assert.deepEqual(a,b,name)}
 async function test(name,fn){
@@ -51,7 +52,7 @@ try{
  });server.listen(0,'127.0.0.1');await once(server,'listening');details.origin=`http://127.0.0.1:${server.address().port}`;
  chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--autoplay-policy=no-user-gesture-required','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
  let stderr='';const endpoint=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Isolated Chrome startup timeout: '+stderr)),20000);chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1])}});chrome.on('error',reject)});
- socket=new WebSocket(endpoint);await once(socket,'open');socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails);if(['Target.targetCrashed','Inspector.targetCrashed'].includes(m.method))crashNotices.push({method:m.method,sessionId:m.sessionId,...m.params});if(!pending.has(m.id))return;const x=pending.get(m.id);pending.delete(m.id);clearTimeout(x.timer);m.error?x.reject(Error(JSON.stringify(m.error))):x.resolve(m.result)});
+ socket=new WebSocket(endpoint);await once(socket,'open');socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails);if(m.method==='Tracing.dataCollected')traceEvents.push(...m.params.value);if(m.method==='Tracing.tracingComplete')traceComplete=true;if(['Target.targetCrashed','Inspector.targetCrashed'].includes(m.method))crashNotices.push({method:m.method,sessionId:m.sessionId,...m.params});if(!pending.has(m.id))return;const x=pending.get(m.id);pending.delete(m.id);clearTimeout(x.timer);m.error?x.reject(Error(JSON.stringify(m.error))):x.resolve(m.result)});
  await command('Target.setDiscoverTargets',{discover:true});
  details.browser=await command('Browser.getVersion');
  await test('P1 legacy recovery waits for explicit closed-tab confirmation and cancel preserves data',async()=>{const p=await open(await context());const d=await p.eval(`(async()=>{const blob=await fetch('/tests/fixtures/landscape.mp4').then(r=>r.blob());await putRecordingChunk('legacy',0,blob);await putRecordingSession({id:'legacy',mediaId:'legacy',bytes:blob.size,mimeType:blob.type,status:'recording'});await putRecordingSession({id:'legacy-empty',bytes:0,status:'recording'});await recoverInterruptedRecordings({force:true});await refreshRecoveryNotice();const before={pending:(await listRecordingSessions()).length,media:await countStoredMedia(),summary:elements.recoverySummary.textContent};const prompts=[];window.confirm=m=>{prompts.push(m);return false};await retryPendingRecordings();await discardPendingRecordings();const cancelled={pending:(await listRecordingSessions()).length,bytes:(await getRecordingChunks('legacy')).reduce((s,b)=>s+b.size,0)};window.confirm=m=>{prompts.push(m);return true};await retryPendingRecordings();return{before,cancelled,prompts,expected:blob.size,after:{pending:(await listRecordingSessions()).length,media:(await listStoredMedia()).map(m=>({id:m.id,size:m.blob.size}))}}})()`,30000);details.legacyRecovery=d;check('unmarked legacy sessions stay untouched',d.before.pending,2);check('legacy is not auto promoted',d.before.media,0);check('old tab warning shown',d.before.summary.includes('旧版のタブ'));check('cancel retains both rows',d.cancelled.pending,2);check('cancel retains bytes',d.cancelled.bytes,d.expected);check('all legacy confirmation explains old tabs',d.prompts.every(m=>m.includes('旧版')&&m.includes('閉じ')));check('confirmed idle legacy record recovered',d.after.media[0].size,d.expected);check('confirmed empty legacy row cleaned',d.after.pending,0);await close(p)});
@@ -69,7 +70,25 @@ try{
   // Wait for the observed crash rather than assuming a fixed delay means the
   // renderer has exited. Keep lock release and recovery as independent checks.
   details.crashCommand={target:a.target,session:a.session,status:'requested'};
-  command('Page.crash',{},a.session,5000).then(()=>details.crashCommand.status='returned').catch(e=>{details.crashCommand.status='response-unavailable';details.crashCommand.error=String(e)});
+  if(process.platform==='linux'||process.env.QC_CRASH_BACKEND==='owned-renderer'){
+   // Chrome 155 on the runner leaves Page.crash pending without a crash event.
+   // Resolve only this owned target's renderer PID from a unique trace mark,
+   // verify it against this browser's process inventory, then SIGKILL that PID.
+   // Never enumerate or terminate unrelated browsers or match process names.
+   traceEvents=[];traceComplete=false;const tag='quiet-camera-crash-'+a.target;
+   await command('Tracing.start',{categories:'blink.user_timing',transferMode:'ReportEvents'});
+   await a.eval(`performance.mark(${JSON.stringify(tag)})`);await b.eval(`performance.mark(${JSON.stringify(tag+'-observer')})`);await command('Tracing.end');
+   const traceDeadline=Date.now()+5000;while(!traceComplete&&Date.now()<traceDeadline)await sleep(25);
+   const owner=traceEvents.find(e=>e.name===tag),observer=traceEvents.find(e=>e.name===tag+'-observer');
+   check('owner renderer PID observed in trace',Number.isInteger(owner?.pid)&&owner.pid>0);
+   check('observer renderer is separate',Number.isInteger(observer?.pid)&&owner.pid!==observer.pid);
+   const inventory=await command('SystemInfo.getProcessInfo');
+   check('crash PID belongs to owned browser renderer',inventory.processInfo.some(p=>p.type==='renderer'&&Number(p.id)===owner.pid)&&owner.pid!==chrome.pid&&owner.pid!==process.pid);
+   details.crashCommand={...details.crashCommand,mode:'owned-renderer-sigkill',pid:owner.pid,browserPid:chrome.pid,observerPid:observer.pid,status:'verified'};
+   process.kill(owner.pid,'SIGKILL');details.crashCommand.status='terminated';
+  }else{
+   details.crashCommand.mode='Page.crash';command('Page.crash',{},a.session,5000).then(()=>details.crashCommand.status='returned').catch(e=>{details.crashCommand.status='response-unavailable';details.crashCommand.error=String(e)});
+  }
   const deadline=Date.now()+15000;
   while(Date.now()<deadline&&!crashNotices.some(n=>n.targetId===a.target||n.sessionId===a.session))await sleep(50);
   details.crashEvents=crashNotices.filter(n=>n.targetId===a.target||n.sessionId===a.session);
