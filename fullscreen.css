@@ -41,8 +41,29 @@ html.immersive-mode .app {
 html.immersive-mode .app-header,
 html.immersive-mode .mode-switcher,
 html.immersive-mode .settings-panel,
-html.immersive-mode .camera-note {
+html.immersive-mode .camera-note,
+html.immersive-mode .about-app {
   display: none !important;
+}
+
+/* Keep microphone state visible below the edge control, away from a top cutout.
+   The row no longer takes space above the immersive camera preview. */
+html.immersive-mode .mode-control-row {
+  position: fixed;
+  z-index: 8;
+  top: var(--immersive-mic-top, calc(max(10px, env(safe-area-inset-top)) + 56px));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: auto;
+  left: auto;
+  width: auto;
+  max-width: calc(100% - max(10px, env(safe-area-inset-left)) - max(10px, env(safe-area-inset-right)));
+  margin: 0;
+  display: block;
+}
+
+html.immersive-mode .microphone-status {
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 html.immersive-mode .camera-stage {
@@ -81,6 +102,10 @@ html.immersive-mode .camera-top-controls .fullscreen-button {
 
 html.immersive-mode .recording-badge {
   top: max(14px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  max-width: var(--immersive-recording-width, calc(100% - 120px));
+  transform: none;
+  overflow: hidden;
 }
 
 html.immersive-mode .status-bar {
@@ -114,7 +139,7 @@ html.immersive-mode .sheet-dialog[open] {
 
 @media (max-width: 480px) {
   html.immersive-mode .recording-badge {
-    max-width: calc(100% - 120px);
+    max-width: var(--immersive-recording-width, calc(100% - 120px));
     overflow: hidden;
     text-overflow: ellipsis;
   }

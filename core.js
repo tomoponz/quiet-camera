@@ -98,7 +98,7 @@ const elements = {
 const DEFAULT_SETTINGS = {
   mode: "photo",
   timer: 0,
-  ratio: "4:3",
+  ratio: "16:9",
   videoRatio: "16:9",
   grid: false,
   photoFormat: "image/jpeg",
@@ -121,7 +121,7 @@ const state = {
   isFrontCamera: false,
   mode: savedSettings.mode === "video" ? "video" : "photo",
   timerSeconds: Number(savedSettings.timer) || 0,
-  ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "4:3",
+  ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "16:9",
   videoRatio: ["4:3", "1:1", "16:9"].includes(savedSettings.videoRatio) ? savedSettings.videoRatio : "16:9",
   torchEnabled: false,
   currentZoom: 1,
@@ -143,6 +143,13 @@ const state = {
   recordingBytes: 0,
   recordingEmittedBytes: 0,
   recordingMaxBytes: null,
+  recordingFinalizeLimitBytes: null,
+  recordingStopBytes: null,
+  recordingLargestChunkBytes: 0,
+  recordingStopObservedBytes: 0,
+  recordingStopRequested: false,
+  recordingLockRelease: null,
+  recordingKeyFrameIntervalRequestedMs: 0,
   recordingStartedAt: 0,
   recordingDurationMs: 0,
   recordingTimerId: null,
@@ -330,7 +337,9 @@ function stopCamera() {
   state.torchEnabled = false;
   elements.video.srcObject = null;
   elements.shutterButton.disabled = true;
-  elements.torchButton.hidden = true;
+  elements.torchButton.hidden = false;
+  elements.torchButton.disabled = true;
+  elements.torchButton.title = "ライト: カメラ接続後に対応を確認します";
   elements.zoomControl.hidden = true;
   elements.exposureControl.hidden = true;
 }
@@ -367,7 +376,9 @@ function updateCapabilities() {
   } else elements.exposureControl.hidden = true;
 
   const torchSupported = Boolean(state.capabilities.torch);
-  elements.torchButton.hidden = !torchSupported;
+  elements.torchButton.hidden = false;
+  elements.torchButton.disabled = !torchSupported || Boolean(state.cameraTransitioning) || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+  elements.torchButton.title = torchSupported ? "ライト" : "ライト: このカメラ／ブラウザでは利用できません";
   if (!torchSupported) {
     state.torchEnabled = false;
     elements.torchButton.setAttribute("aria-pressed", "false");
@@ -434,7 +445,7 @@ function setControlsDisabled(disabled) {
   });
   if (!elements.zoomControl.hidden) elements.zoomRange.disabled = disabled;
   if (!elements.exposureControl.hidden) elements.exposureRange.disabled = disabled;
-  if (!elements.torchButton.hidden) elements.torchButton.disabled = disabled;
+  if (!elements.torchButton.hidden) elements.torchButton.disabled = disabled || !state.capabilities.torch || Boolean(state.cameraTransitioning);
 }
 
 async function switchCamera() {
@@ -445,6 +456,8 @@ async function switchCamera() {
 
 function updateModeUi() {
   const photoMode = state.mode === "photo";
+  elements.photoModeButton.closest(".mode-switcher").dataset.mode = photoMode ? "photo" : "video";
+  elements.cameraStage.dataset.captureMode = photoMode ? "photo" : "video";
   elements.photoModeButton.classList.toggle("active", photoMode);
   elements.videoModeButton.classList.toggle("active", !photoMode);
   elements.photoModeButton.setAttribute("aria-pressed", String(photoMode));
@@ -463,10 +476,13 @@ function updateModeUi() {
 
 async function setMode(mode) {
   if (state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive") || state.mode === mode) return;
+  const active = Boolean(state.stream) || Boolean(state.cameraTransitioning);
+  const reuse = window.QuietCameraEnhancements?.canReuseStreamForMode?.(mode) === true;
+  if (active && !reuse) window.QuietCameraEnhancements?.beginPreviewTransition();
   state.mode = mode;
   updateModeUi();
   persistCurrentSettings();
-  if (state.stream) await startCamera();
+  if (active && !reuse) await startCamera();
 }
 
 function cycleTimer() {

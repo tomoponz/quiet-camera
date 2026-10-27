@@ -41,7 +41,7 @@ assert.equal(recordingStartAllowed({ hasStream: true, busy: false, recorderState
 
 const mebibyte = 1024 * 1024;
 assert.throws(() => calculateRecordingByteBudget(44 * mebibyte), /保存容量/, "small free space must not promise an unfinalizable 20 MB recording");
-assert.equal(calculateRecordingByteBudget(80 * mebibyte), 24 * mebibyte, "budget must reserve space for the final media copy");
+assert.equal(calculateRecordingByteBudget(208 * mebibyte), 24 * mebibyte, "budget must reserve delayed output allowance for both chunk and finalized copies");
 assert.equal(calculateRecordingByteBudget(null), HARD_RECORDING_LIMIT_BYTES, "unknown quota keeps the hard safety cap");
 assert.equal(calculateRecordingByteBudget(4 * 1024 * mebibyte), HARD_RECORDING_LIMIT_BYTES, "large quotas must still respect the hard safety cap");
 

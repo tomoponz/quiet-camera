@@ -28,6 +28,12 @@ jobs:
         run: node tests/service-worker.test.cjs
       - name: IndexedDB blocked-open tests
         run: node tests/storage.test.cjs
+      - name: Settings sheet flick regression tests
+        run: node tests/settings-sheet-motion.test.cjs
+      - name: Device-relative layout regression tests
+        run: node tests/device-layout.test.cjs
+      - name: Gallery archive regression tests
+        run: node tests/gallery-batch.test.cjs
       - name: Check every application script
         run: |
           for file in \
@@ -35,15 +41,66 @@ jobs:
             camera-ratio-model.js \
             core.js \
             photo.js \
+            video-preview.js \
             video.js \
             ui.js \
+            media-dialog-scroll.js \
+            photo-review.js \
             fullscreen.js \
             camera-enhancements-core.js \
+            camera-transition.js \
             camera-devices.js \
             camera-controls.js \
             camera-capture.js \
+            settings-sheet-motion.js \
             camera-enhancements.js \
+            gallery-batch.js \
+            gallery-selection.js \
+            history-sheet.js \
+            device-layout-model.js \
+            camera-overlay.js \
             service-worker.js; do
             echo "Checking $file"
             node --check "$file"
           done
+
+  browser-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QC_PC_HEADED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Japanese font support for rendered UI
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-match -f '%{family}\n' 'sans-serif:lang=ja'
+      - name: Desktop input and controls preflight
+        env:
+          QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT: test-results/pc-preflight
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/pc-buttons-browser.test.mjs
+      - name: Owned renderer crash preflight
+        env:
+          QC_RECORDING_FILTER: renderer crash
+          QC_RECORDING_BROWSER_OUTPUT: test-results/crash-preflight
+        run: node tests/recording-safety-browser.test.mjs
+      - name: Japanese desktop-label preflight
+        env:
+          QC_REVIEW_HISTORY_FILTER: ^P8
+          QC_REVIEW_HISTORY_OUTPUT: test-results/labels-preflight
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/review-history-regression-browser.test.mjs
+      - name: Synthetic browser and aggregate regressions
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/run-all.mjs --browser
+      - name: Preserve synthetic regression failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-regression-evidence
+          path: |
+            test-results/**/*.json
+            test-results/**/*.png
+          retention-days: 7

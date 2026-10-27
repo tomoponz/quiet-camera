@@ -31,12 +31,15 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .text-button, .setting-button, .icon-button, .round-text-button, .close-button { background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(16px); }
 .text-button { min-height:44px; padding: 9px 13px; border-radius: 999px; font-weight: 700; }
 .update-button { border-color: rgba(112, 183, 255, .7); color: #d9edff; }
-.mode-control-row { width:min(100%,380px); margin:0 auto; display:flex; align-items:center; justify-content:center; gap:8px; }
-.mode-switcher { flex:1 1 200px; max-width:240px; min-width:0; padding:4px; display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--border); border-radius:999px; background:#121419; }
-.mode-button { min-height:44px; border-radius: 999px; background: transparent; color: var(--muted); font-weight: 800; }
-.mode-button.active { background: #fff; color: #050607; }
-.microphone-status { flex:0 0 auto; min-width:106px; min-height:44px; padding:0 12px; display:flex; align-items:center; justify-content:center; gap:6px; border:1px solid currentColor; border-radius:999px; font-size:.75rem; font-weight:800; }
-.microphone-status strong { font-size:.82rem; letter-spacing:.04em; }
+.mode-control-row { width:min(100%,468px); margin:0 auto; display:grid; grid-template-columns:106px minmax(0,240px) 106px; align-items:center; justify-content:center; gap:8px; }
+.mode-switcher { grid-column:2; position:relative; isolation:isolate; width:100%; min-width:0; padding:4px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); border:1px solid var(--border); border-radius:999px; background:#121419; }
+.mode-switcher::before { content:""; position:absolute; z-index:0; top:4px; bottom:4px; left:4px; width:calc((100% - 8px)/2); border-radius:999px; background:#fff; transform:translateX(0); transition:transform 180ms ease; pointer-events:none; }
+.mode-switcher[data-mode="video"]::before { transform:translateX(100%); }
+.mode-button { position:relative; z-index:1; min-width:0; min-height:44px; padding:4px 6px; border-radius:999px; background:transparent; color:var(--muted); font-weight:800; line-height:1.1; overflow-wrap:anywhere; }
+.mode-button.active { color:#050607; }
+.microphone-status { grid-column:3; min-width:106px; min-height:44px; max-height:54px; padding:0 6px; display:flex; flex-wrap:wrap; align-items:center; align-content:center; justify-content:center; gap:0 4px; border:1px solid currentColor; border-radius:999px; font-size:.65rem; line-height:1.1; font-weight:800; }
+.microphone-status span, .microphone-status strong { white-space:nowrap; }
+.microphone-status strong { font-size:.7rem; line-height:1.1; letter-spacing:.04em; }
 .microphone-status.microphone-off { background:rgba(255,167,38,.15); color:#ffd08a; }
 .microphone-status.microphone-on { background:rgba(62,207,126,.14); color:#9cf0bd; }
 
@@ -102,6 +105,12 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .shutter-button:active span { transform:scale(.88); }
 .round-text-button { width:44px; height:44px; justify-self:center; border-radius:50%; font-family:Georgia,serif; font-size:1.1rem; font-weight:700; }
 .camera-note { margin:-6px auto 0; max-width:560px; color:var(--muted); font-size:.73rem; line-height:1.55; text-align:center; }
+.about-app { max-width:620px; margin:10px auto 0; padding:18px; border:1px solid var(--border); border-radius:18px; background:#111318; color:#d8dbe1; line-height:1.7; }
+.about-app h2 { margin:0 0 8px; color:#fff; font-size:1.05rem; }
+.about-app p { margin:8px 0; font-size:.82rem; }
+.about-meta { display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:10px; color:var(--muted); font-size:.76rem; }
+.about-meta strong { color:#fff; }
+.about-links { display:flex; flex-wrap:wrap; gap:8px; }
 
 .sheet-dialog { width:min(calc(100% - 24px),760px); max-height:calc(100dvh - 24px); margin:auto; padding:18px; overflow:auto; border:1px solid var(--border); border-radius:22px; background:#111318; color:#fff; box-shadow:0 24px 80px rgba(0,0,0,.65); }
 .sheet-dialog::backdrop { background:rgba(0,0,0,.72); backdrop-filter:blur(5px); }
@@ -109,8 +118,20 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .dialog-header h2 { margin:0; font-size:1.15rem; }
 .review-meta { margin:4px 0 0; color:var(--muted); font-size:.75rem; line-height:1.45; overflow-wrap:anywhere; }
 .close-button { flex:0 0 auto; width:44px; height:44px; border-radius:50%; font-size:1.6rem; line-height:1; }
-.review-dialog { width:min(calc(100% - 24px),1040px); overflow:hidden; }
+.review-dialog { width:min(calc(100% - 24px),1040px); overflow:hidden; overscroll-behavior:contain; }
 .review-layout { min-width:0; min-height:0; display:grid; grid-template-columns:minmax(0,1.65fr) minmax(280px,.7fr); gap:18px; }
+.review-media-column { min-width:0; min-height:0; display:flex; flex-direction:column; gap:8px; }
+.review-photo-nav { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.review-photo-nav[hidden] { display:none; }
+.review-photo-nav button { min-height:44px; padding:8px; }
+.review-photo-status { grid-column:1/-1; margin:0; color:var(--muted); font-size:.72rem; line-height:1.5; }
+.review-viewer { position:relative; touch-action:pan-y pinch-zoom; }
+.review-viewer.is-page-zoomed, .review-viewer.is-video-review { touch-action:auto; }
+.video-preview-status { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; margin:0; padding:8px; border-radius:8px; background:rgba(0,0,0,.8); color:#fff; font-size:.75rem; text-align:center; pointer-events:none; }
+.video-thumbnail { position:relative; }
+.video-thumbnail img { position:absolute; inset:0; }
+.video-thumbnail-placeholder { padding:12px; color:var(--muted); font-size:.72rem; text-align:center; }
+.video-thumbnail-badge { position:absolute; bottom:6px; right:6px; padding:4px 6px; border-radius:5px; background:rgba(0,0,0,.7); color:#fff; font-size:.65rem; font-weight:800; }
 .review-viewer { min-width:0; min-height:360px; max-height:78dvh; display:grid; place-items:center; overflow:hidden; border-radius:16px; background:#000; }
 .review-media { display:block; max-width:100%; max-height:78dvh; object-fit:contain; background:#000; }
 #reviewVideo { width:100%; height:auto; }
@@ -128,7 +149,7 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .camera-permission-actions { grid-template-columns:1fr 1fr; }
 .camera-permission-actions #closeCameraPermissionButton { grid-column:1/-1; }
 
-.gallery-dialog { width:min(calc(100% - 24px),960px); }
+.gallery-dialog { width:min(calc(100% - 24px),960px); overscroll-behavior:contain; }
 .gallery-header { position:sticky; top:-18px; z-index:3; padding:18px 0 10px; background:#111318; }
 .gallery-toolbar { position:sticky; top:55px; z-index:2; display:flex; flex-wrap:wrap; gap:8px; padding:8px 0 14px; background:#111318; }
 .recovery-notice { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; padding:12px; border:1px solid rgba(255,190,90,.45); border-radius:14px; background:rgba(90,55,8,.28); }
@@ -136,7 +157,7 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .recovery-notice p { margin:0; color:#ffe0a6; line-height:1.45; }
 .recovery-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .gallery-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
-.gallery-card { position:relative; min-width:0; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:#17191e; }
+.gallery-card { position:relative; isolation:isolate; min-width:0; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:#17191e; }
 .gallery-select { position:absolute; z-index:2; top:6px; left:6px; width:44px; height:44px; display:grid; place-items:center; border-radius:11px; background:rgba(0,0,0,.68); }
 .gallery-select input { width:20px; height:20px; }
 .gallery-open { width:100%; padding:0; display:block; text-align:left; background:transparent; }
@@ -197,15 +218,27 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
   .shutter-button { width:64px; height:64px; }
   .camera-note { display:none; }
   .settings-panel { display:none; }
-  .mode-switcher { width:200px; }
+  .mode-switcher { width:100%; }
 }
 
-@media (orientation:portrait) and (max-height:700px) {
-  /* Keep the selected capture ratio when max-height constrains short phones. */
-  .camera-stage.ratio-4-3 { width:min(100%,50.25dvh); }
-  .camera-stage.ratio-1-1 { width:min(100%,67dvh); }
-  .camera-stage.ratio-16-9 { width:min(100%,37.6875dvh); }
+@media (max-width:499px) {
+  /* Reserve a separate MIC row even in photo mode; the selector stays centered. */
+  .mode-control-row { width:min(100%,380px); grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(54px,auto) 44px; gap:4px; }
+  .mode-switcher { grid-column:1; grid-row:1; justify-self:center; width:min(100%,240px); }
+  .microphone-status { grid-column:1; grid-row:2; justify-self:end; height:44px; max-width:100%; padding:0 12px; flex-wrap:nowrap; }
 }
+
+@media (orientation:portrait) and (max-height:700px), (orientation:portrait) and (max-width:699px) {
+  /* Use the same available width. Portrait video grows taller instead of
+     shrinking sideways; the page can scroll while capture controls stay handy. */
+  html:not(.immersive-mode) .camera-stage { max-height:none; flex:0 0 auto; }
+  .camera-stage.ratio-4-3 { width:100%; }
+  .camera-stage.ratio-1-1 { width:100%; }
+  .camera-stage.ratio-16-9 { width:100%; }
+  html:not(.immersive-mode) .bottom-controls { position:sticky; z-index:10; bottom:max(8px,env(safe-area-inset-bottom)); border-radius:18px; padding:8px; background:rgba(7,8,9,.94); }
+}
+
+html:not(.immersive-mode) .camera-stage[data-capture-mode="video"] video { object-fit:contain; }
 
 @media (orientation:landscape) and (max-height:700px) {
   .camera-stage {
@@ -221,6 +254,7 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 @keyframes focus-fade { 0%,100% { opacity:0; transform:translate(-50%,-50%); } 18%,70% { opacity:1; transform:translate(-50%,-50%); } }
 @keyframes flash-reduced { 0%,100% { opacity:0; } 35% { opacity:.35; } }
 @media (prefers-reduced-motion:reduce) {
+  .mode-switcher::before { transition:none !important; }
   *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
   .focus-ring.visible { animation:focus-fade 900ms linear forwards !important; }
   .flash-overlay.active { animation:flash-reduced 180ms linear !important; }

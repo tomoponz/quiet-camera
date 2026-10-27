@@ -1,0 +1,156 @@
+{
+  "version": "2026.10.25.3",
+  "purpose": "Fixed pre-PC-enlargement static UI baseline; no profiles, logs, history, captures or tests",
+  "compression": "stored",
+  "archiveSha256": "1d6d6ca2c49950f6d8e0bbde58f253f486eb3fb5bc58f1f4d57893b342f7cf0c",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "13798a586b39d566cba665ecf4f824423e490cd31122eba8801c06c434f77ff9"
+    },
+    {
+      "path": "camera-capture.js",
+      "sha256": "8a3e9bbf423e2324373ea08e97bde2126d57819e97d9d8f07a59718fe18395ce"
+    },
+    {
+      "path": "camera-controls.js",
+      "sha256": "c768353e1d0bf966c31ecfd556ad88bc99303d515826220053236a0bd0dac9c1"
+    },
+    {
+      "path": "camera-devices.js",
+      "sha256": "beca24b54b45205173b25eabfa870b238592c018755d7c8ee531816d9a7eee52"
+    },
+    {
+      "path": "camera-enhancements-core.js",
+      "sha256": "7e08a673549096c3f8278042402421d351cfba27365b1c1a0f20859d294afb22"
+    },
+    {
+      "path": "camera-enhancements.css",
+      "sha256": "1fc85cc85164736439efbeb131359808d5ce2a7f4d176d8f23057d6f8d8fc403"
+    },
+    {
+      "path": "camera-enhancements.js",
+      "sha256": "2d7b5e02ecb666504d3b8fb3b3dfc5a9848bfb69b2ac8c66346e98494069b990"
+    },
+    {
+      "path": "camera-overlay.css",
+      "sha256": "756b80f61985949be1f6629b23944c94314304cdb49f509f716577082060b135"
+    },
+    {
+      "path": "camera-overlay.js",
+      "sha256": "2333db670e55a2e0081694421f56a83123c44201cf410412753643b07316990f"
+    },
+    {
+      "path": "camera-ratio-model.js",
+      "sha256": "a4e5f218057d933d1eee82e2a0ff9d5a02eb6982ed1ba2587f16b51f33e2b9c0"
+    },
+    {
+      "path": "camera-transition.js",
+      "sha256": "fb539be24b2611ced73f66467ed2294135f1ad23a66a9ddd367913b7aae52dc8"
+    },
+    {
+      "path": "core.js",
+      "sha256": "4fd1ad4056007bd89582bc8e537316244c5e20a52ef8aeddb71cdae6771093d2"
+    },
+    {
+      "path": "device-layout-model.js",
+      "sha256": "b8481aa80f31b1620df20dafea6147b69fb0ebbeb3c3a513dce4b8bed95aaaf6"
+    },
+    {
+      "path": "fullscreen.css",
+      "sha256": "1d160dde3c7b7f29ef749de57d37f3cf6c635a575aec737f8534d79839cca243"
+    },
+    {
+      "path": "fullscreen.js",
+      "sha256": "94a9794497c80bc6912b118d9c697b1891bf8f7bc904308f48caaa5c0b8c76d7"
+    },
+    {
+      "path": "gallery-batch.js",
+      "sha256": "a32503aa8f1524ec4a5b6aecbb1e05eb32f0151d8dbbe35606c70b13c8617876"
+    },
+    {
+      "path": "gallery-selection.js",
+      "sha256": "822a64f8d731132dae0dbb4ab1145a38f96a59fad7a9a6bc328de1ed25fdfe7e"
+    },
+    {
+      "path": "history-sheet.js",
+      "sha256": "8d1ef7b2b6b32d18326986798bf4a778fda87db6a1a218b081fd61254ac12842"
+    },
+    {
+      "path": "icons/apple-touch-icon.png",
+      "sha256": "b2db51bc3e2d64d7316739e52cbd84d664ca5d26a9acf1f9e15b3e791563fd94"
+    },
+    {
+      "path": "icons/icon-192.png",
+      "sha256": "a5c515ce4d3109bf6dd6e547e09f1c497eaf84d9c3e9bd3448505a2a8b935819"
+    },
+    {
+      "path": "icons/icon-512.png",
+      "sha256": "3e353a36592bc122250e6fb39eed2bc50d1585d8fe4f517fcba9fbbfd52a57d9"
+    },
+    {
+      "path": "icons/icon.svg",
+      "sha256": "96fa26242de89b9fc68939633601b77484ccb5ded0ecc731fa651d0c4ebe5dbb"
+    },
+    {
+      "path": "images/quiet-camera-og.png",
+      "sha256": "6599c384055fc79f1a69f7cac0a343d3dc658c5581d5f259912a9a5c9ae56774"
+    },
+    {
+      "path": "index.html",
+      "sha256": "91fe922d27065e2565ce924c9ada9a2ffe8222c23aa6267cf2f8dafa0a9f3fe4"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "sha256": "6e738be19d3bb8db685f3616bb523587e53b7e8826ed47648ffe0402b1953b56"
+    },
+    {
+      "path": "media-dialog-scroll.js",
+      "sha256": "200a0b1d5269ddc3976de51dfbac671341094bb936faf6a9de364ad5c5cf7930"
+    },
+    {
+      "path": "photo-review.js",
+      "sha256": "b35fee39a9f846ed45b45f0d22c5cc02172dc7bc6f8bb23f0f39119008d01d27"
+    },
+    {
+      "path": "photo.js",
+      "sha256": "a80fc32c9785620d5cebc4aa89f6e2a429aca6e6d7ac8f74560ff7923a2813a5"
+    },
+    {
+      "path": "privacy.html",
+      "sha256": "6d6171e3bb94ed809e50f0915490c0972136dcae53ea3ffbd4da504f5d59e4fa"
+    },
+    {
+      "path": "service-worker.js",
+      "sha256": "b2527f77541733a4e21bd38e7c69b8b9dd80e2437557037f576645552e74bdc0"
+    },
+    {
+      "path": "settings-sheet-motion.js",
+      "sha256": "d300a3fb186678e8289387e9e0eaa7a456363e2b4c073a16b1819bc38310df8b"
+    },
+    {
+      "path": "sitemap.xml",
+      "sha256": "e81fafad6ae7b4ad14921ddd0c4c9969e2d410628eff0f913ef9df0c4fa58d19"
+    },
+    {
+      "path": "storage.js",
+      "sha256": "84250794085dc7fddccad263a54388a5d052059fa46b2b06538681793d22d5f6"
+    },
+    {
+      "path": "styles.css",
+      "sha256": "202f3dfedf9139f3ca53375600d407fd2e34ca631ddaeef50c773b27fa225834"
+    },
+    {
+      "path": "ui.js",
+      "sha256": "e6a312e9b0562315043621bf86dbd824af42b4a79a2b86ff3b30eee359ea64d1"
+    },
+    {
+      "path": "video-preview.js",
+      "sha256": "9bf20d8413aec972c0bda34230bbf6e55fb06ae0231619770c334bc40501e63d"
+    },
+    {
+      "path": "video.js",
+      "sha256": "f8d61d8a3b3f9e27c137a088a8d70b917fa89fd12e1768dd38e3ea240c25206c"
+    }
+  ]
+}
