@@ -74,6 +74,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Japanese font support for rendered UI
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-match -f '%{family}\n' 'sans-serif:lang=ja'
       - name: Desktop input and controls preflight
         env:
           QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT: test-results/pc-preflight

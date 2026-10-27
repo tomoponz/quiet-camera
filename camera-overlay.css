@@ -138,7 +138,7 @@ html.overlay-camera-layout #cameraSurface .status-bar>.device-upright>span{white
     --pc-secondary-size: max(72px, calc(3.5rem + 16px));
     --pc-shutter-size: max(96px, calc(5rem + 16px));
     --pc-mic-width: max(80px, calc(4.5rem + 12px));
-    --pc-mic-height: max(66px, calc(3.5rem + 10px));
+    --pc-mic-height: max(78px, calc(4rem + 14px));
   }
   html.overlay-camera-layout #cameraSurface .camera-top-controls { gap: 8px; }
   html.overlay-camera-layout #cameraSurface .camera-top-controls > button {
