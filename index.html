@@ -27,13 +27,13 @@
   <meta name="twitter:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
   <link rel="canonical" href="https://tomoponz.github.io/quiet-camera/">
   <title>Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=20261024.1">
+  <link rel="manifest" href="./manifest.webmanifest?v=20261027.3">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./styles.css?v=20261024.1">
-  <link rel="stylesheet" href="./fullscreen.css?v=20261024.1">
-  <link rel="stylesheet" href="./camera-enhancements.css?v=20261024.1">
-  <link rel="stylesheet" href="./camera-overlay.css?v=20261024.1">
+  <link rel="stylesheet" href="./styles.css?v=20261027.3">
+  <link rel="stylesheet" href="./fullscreen.css?v=20261027.3">
+  <link rel="stylesheet" href="./camera-enhancements.css?v=20261027.3">
+  <link rel="stylesheet" href="./camera-overlay.css?v=20261027.3">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
@@ -71,7 +71,7 @@
         <button id="videoModeButton" class="mode-button" type="button" aria-pressed="false" aria-describedby="videoSupportStatus microphoneStatusDetail">動画</button>
       </nav>
       <button id="microphoneStatusButton" class="microphone-status microphone-off" type="button" aria-controls="microphoneSelect" hidden>
-        <span class="microphone-status-current" aria-hidden="true">現在</span><span class="microphone-state-line" aria-hidden="true"><span>MIC</span><strong id="microphoneStatusText">OFF</strong></span>
+        <span class="microphone-status-current" aria-hidden="true">現在</span><span class="microphone-state-line" aria-hidden="true"><span>MIC</span> <strong id="microphoneStatusText">OFF</strong></span>
       </button>
     </div>
     <p id="videoSupportStatus" class="sr-only" role="status" aria-live="polite"></p>
@@ -91,7 +91,7 @@
         </button>
         <button id="timerButton" class="setting-button" type="button" aria-label="セルフタイマー: オフ">OFF</button>
         <button id="ratioButton" class="setting-button" type="button" aria-label="画像比率: 16対9">16:9</button>
-        <button id="torchButton" class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
+        <button id="torchButton" disabled class="icon-button" type="button" aria-pressed="false" aria-label="ライト" title="ライト" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4-2 3v9H10v-9L8 7l1-4Z"/><path d="M10 14h4"/></svg>
         </button>
         <button id="gridButton" class="icon-button" type="button" aria-pressed="false" aria-label="グリッド表示" title="グリッド">
@@ -191,40 +191,52 @@
           <div><h2 id="reviewTitle">撮影結果</h2><p id="reviewMeta" class="review-meta"></p></div>
           <button id="closeReviewButton" class="close-button" type="button" aria-label="閉じる">×</button>
         </div>
-        <div class="dialog-actions review-actions">
-          <button id="downloadButton" class="secondary-button" type="button">端末に保存</button>
-          <button id="shareButton" class="primary-button" type="button">共有</button>
-          <button id="deleteButton" class="danger-button" type="button">削除</button>
-        </div>
         <p class="dialog-help">iPhoneでは共有メニューから「画像を保存」または「ファイルに保存」を選んでください。</p>
       </aside>
+    </div>
+    <div id="reviewActionBar" class="dialog-actions review-actions review-action-dock" role="group" aria-label="表示中のメディアの操作">
+      <button id="shareButton" class="secondary-button compact-button" type="button" aria-label="共有" title="共有" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.5 10.5 7-4m-7 7 7 4"/></svg></button>
+      <button id="downloadButton" class="secondary-button compact-button" type="button" aria-label="端末に保存" title="端末に保存" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg></button>
+      <button id="reviewPdfButton" class="secondary-button compact-button" type="button" aria-label="表示中の写真をPDFにする" title="表示中の写真をPDFにする" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1h12l6 6v16H3zM15 1v7h6"/><text x="12" y="17" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-size="8" font-weight="700">PDF</text></svg></button>
+      <button id="deleteButton" class="danger-button compact-button" type="button" aria-label="削除" title="削除" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button>
     </div>
   </dialog>
 
   <dialog id="galleryDialog" class="sheet-dialog gallery-dialog" aria-labelledby="galleryTitle" aria-describedby="gallerySummary">
+    <div class="gallery-sheet-sizing"><div id="galleryResizeHandle" class="settings-resize-handle" role="separator" tabindex="0" aria-label="撮影履歴の高さ。上下にドラッグ、または上下矢印キーで調整。上へ勢いよく払うと最大に広げる。下へ勢いよく払う、またはEscapeで閉じる" aria-orientation="horizontal" aria-controls="gallerySheetBody" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"></div></div>
     <div class="dialog-header gallery-header">
       <div><h2 id="galleryTitle">撮影履歴</h2><p id="gallerySummary" class="review-meta" role="status" aria-live="polite">0件</p></div>
+      <div class="gallery-selection-controls">
+        <button id="selectAllButton" class="secondary-button compact-button" type="button" aria-label="表示中をすべて選択" title="一覧に読み込み済みの項目をすべて選択" aria-hidden="true" disabled>表示中を選択</button>
+        <button id="gallerySelectionButton" class="secondary-button compact-button" type="button" aria-pressed="false">選択</button>
+      </div>
       <button id="closeGalleryButton" class="close-button" type="button" aria-label="閉じる">×</button>
     </div>
-    <div class="gallery-toolbar">
-      <button id="selectAllButton" class="secondary-button compact-button" type="button">表示中をすべて選択</button>
-      <button id="exportPdfButton" class="secondary-button compact-button" type="button" disabled>選択写真をPDF</button>
-      <button id="deleteSelectedButton" class="danger-button compact-button" type="button" disabled>選択削除</button>
-    </div>
+    <div id="gallerySheetBody">
     <div id="recoveryNotice" class="recovery-notice" hidden>
       <p id="recoverySummary">復元待ちの録画があります。</p>
       <div class="recovery-actions">
         <button id="retryRecoveryButton" class="secondary-button compact-button" type="button">復元を再試行</button>
+        <button type="button" id="downloadRecoveryButton" class="secondary-button" aria-label="再生未確認の録画一時データを元ファイルとして端末へ保存">一時データを保存</button>
         <button id="discardRecoveryButton" class="danger-button compact-button" type="button">一時データを削除</button>
       </div>
     </div>
     <div id="galleryGrid" class="gallery-grid"></div>
     <p id="galleryEmpty" class="gallery-empty">撮影すると、ここに端末内の履歴が表示されます。</p>
+    <div id="galleryActionClearance" aria-hidden="true"></div>
+    </div>
+    <div id="gallerySelectionActions" class="gallery-toolbar gallery-action-dock" hidden>
+      <div class="gallery-action-status"><span id="gallerySelectionCount" role="status" aria-live="polite">0件選択</span><span id="gallerySelectionNotice" role="status" hidden></span></div>
+      <button id="shareGalleryButton" class="secondary-button compact-button" type="button" aria-label="共有" title="共有" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.5 10.5 7-4m-7 7 7 4"/></svg></button>
+      <button id="saveGalleryButton" class="secondary-button compact-button" type="button" aria-label="端末に保存" title="端末に保存" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg></button>
+      <button id="exportPdfButton" class="secondary-button compact-button" type="button" aria-label="選択写真をPDF" title="選択写真をPDF" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1h12l6 6v16H3zM15 1v7h6"/><text x="12" y="17" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-size="8" font-weight="700">PDF</text></svg></button>
+      <button id="deleteSelectedButton" class="danger-button compact-button" type="button" aria-label="選択削除" title="選択削除" disabled><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button>
+    </div>
   </dialog>
 
-  <dialog id="settingsDialog" class="sheet-dialog settings-dialog" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
+  <dialog id="settingsDialog" class="sheet-dialog settings-dialog" closedby="closerequest" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
     <div class="settings-sheet-sizing" role="group" aria-label="設定パネルの高さ">
-      <div id="settingsResizeHandle" class="settings-resize-handle" role="separator" tabindex="0" aria-label="設定パネルの高さ。上下にドラッグ、または上下矢印キーで調整。上へ勢いよく払うと最大に広げる。下へ勢いよく払う、またはEscapeで閉じる" aria-orientation="horizontal" aria-controls="settingsSheetBody" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="画面の約半分">
+      <div id="settingsResizeHandle" class="settings-resize-handle" role="separator" tabindex="0" aria-label="設定パネルの高さ。上下にドラッグ、または上下矢印キーで調整。上へ勢いよく払うと最大に広げる。下へ勢いよく払う、またはEscapeで閉じる" aria-orientation="horizontal" aria-controls="settingsSheetBody" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="画面全体">
       </div>
     </div>
     <div class="dialog-header"><div><h2 id="settingsTitle">カメラ設定</h2><p id="settingsDescription" class="review-meta">利用できる機能だけ表示します。</p></div><button id="closeSettingsButton" class="close-button" type="button" aria-label="閉じる">×</button></div>
@@ -290,23 +302,27 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./storage.js?v=20261024.1" defer></script>
-  <script src="./camera-ratio-model.js?v=20261024.1" defer></script>
-  <script src="./core.js?v=20261024.1" defer></script>
-  <script src="./photo.js?v=20261024.1" defer></script>
-  <script src="./video-preview.js?v=20261024.1" defer></script>
-  <script src="./video.js?v=20261024.1" defer></script>
-  <script src="./ui.js?v=20261024.1" defer></script>
-  <script src="./media-dialog-scroll.js?v=20261024.1" defer></script>
-  <script src="./photo-review.js?v=20261024.1" defer></script>
-  <script src="./fullscreen.js?v=20261024.1" defer></script>
-  <script src="./camera-enhancements-core.js?v=20261024.1" defer></script>
-  <script src="./camera-devices.js?v=20261024.1" defer></script>
-  <script src="./camera-controls.js?v=20261024.1" defer></script>
-  <script src="./camera-capture.js?v=20261024.1" defer></script>
-  <script src="./settings-sheet-motion.js?v=20261024.1" defer></script>
-  <script src="./camera-enhancements.js?v=20261024.1" defer></script>
-  <script src="./device-layout-model.js?v=20261024.1" defer></script>
-  <script src="./camera-overlay.js?v=20261024.1" defer></script>
+  <script src="./storage.js?v=20261027.3" defer></script>
+  <script src="./camera-ratio-model.js?v=20261027.3" defer></script>
+  <script src="./core.js?v=20261027.3" defer></script>
+  <script src="./photo.js?v=20261027.3" defer></script>
+  <script src="./video-preview.js?v=20261027.3" defer></script>
+  <script src="./video.js?v=20261027.3" defer></script>
+  <script src="./ui.js?v=20261027.3" defer></script>
+  <script src="./media-dialog-scroll.js?v=20261027.3" defer></script>
+  <script src="./photo-review.js?v=20261027.3" defer></script>
+  <script src="./fullscreen.js?v=20261027.3" defer></script>
+  <script src="./camera-enhancements-core.js?v=20261027.3" defer></script>
+  <script src="./camera-transition.js?v=20261027.3" defer></script>
+  <script src="./camera-devices.js?v=20261027.3" defer></script>
+  <script src="./camera-controls.js?v=20261027.3" defer></script>
+  <script src="./camera-capture.js?v=20261027.3" defer></script>
+  <script src="./settings-sheet-motion.js?v=20261027.3" defer></script>
+  <script src="./camera-enhancements.js?v=20261027.3" defer></script>
+  <script src="./gallery-batch.js?v=20261027.3" defer></script>
+  <script src="./gallery-selection.js?v=20261027.3" defer></script>
+  <script src="./history-sheet.js?v=20261027.3" defer></script>
+  <script src="./device-layout-model.js?v=20261027.3" defer></script>
+  <script src="./camera-overlay.js?v=20261027.3" defer></script>
 </body>
 </html>

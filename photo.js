@@ -108,7 +108,7 @@ function selectMedia(media) {
     elements.reviewVideo.pause();
     elements.reviewVideo.hidden = true;
     elements.reviewVideo.removeAttribute("src");
-    elements.reviewTitle.textContent = "写真";
+    elements.reviewTitle.textContent = media.mimeType === "application/pdf" || media.extension === "pdf" ? "PDF" : "写真";
   } else {
     elements.reviewVideo.src = state.selectedObjectUrl;
     elements.reviewVideo.hidden = false;
@@ -127,22 +127,44 @@ function clearSelectedMedia() {
   document.dispatchEvent(new Event("quietcamera:reviewchange"));
 }
 
-async function addMedia(media, { showReview = true } = {}) {
+// "2秒表示": a contact pauses the countdown and its release restarts 2 s;
+// keyboard input and any review action keep the review open (cancel).
+function cancelBriefReview() {
+  window.clearTimeout(state.briefReviewTimer);
+  state.briefReviewTimer = null;
+  state.briefReviewPending = false;
+}
+function scheduleBriefReviewClose(delay = 2000) {
+  window.clearTimeout(state.briefReviewTimer);
+  state.briefReviewPending = true;
+  state.briefReviewTimer = window.setTimeout(() => {
+    state.briefReviewTimer = null;
+    state.briefReviewPending = false;
+    if (elements.reviewDialog.open) elements.reviewDialog.close();
+  }, delay);
+}
+function pauseBriefReview() {
+  if (!state.briefReviewPending) return;
+  window.clearTimeout(state.briefReviewTimer);
+  state.briefReviewTimer = null;
+}
+function resumeBriefReview() {
+  if (state.briefReviewPending && !state.briefReviewTimer && elements.reviewDialog.open) scheduleBriefReviewClose();
+}
+
+async function addMedia(media, { showReview = true, recordingSessionId = null } = {}) {
   const stored = { ...media, id: media.id || makeId(media.kind), createdAt: media.createdAt || Date.now() };
-  await putMedia(stored);
+  if (recordingSessionId) await commitRecordingMedia(stored,recordingSessionId);
+  else await putMedia(stored);
   await refreshGallery();
   if (!showReview) return stored;
   const behavior = elements.autoReviewSelect.value;
-  if (behavior === "never") return stored;
+  // Never stack the automatic review on top of an open history sheet.
+  if (behavior === "never" || elements.galleryDialog.open) return stored;
   selectMedia(stored);
   state.reviewReturnFocus = elements.shutterButton;
   elements.reviewDialog.showModal();
-  if (behavior === "brief") {
-    window.clearTimeout(state.briefReviewTimer);
-    state.briefReviewTimer = window.setTimeout(() => {
-      if (elements.reviewDialog.open) elements.reviewDialog.close();
-    }, 2000);
-  }
+  if (behavior === "brief") scheduleBriefReviewClose();
   return stored;
 }
 
@@ -194,6 +216,7 @@ async function capturePhoto() {
   if (state.busy || !state.stream || elements.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
   state.busy = true;
   elements.shutterButton.disabled = true;
+  elements.galleryButton.disabled = true; // not in setControlsDisabled: video uses it as the cancel button
   setControlsDisabled(true);
   let photoSource = null;
 
@@ -259,6 +282,7 @@ async function capturePhoto() {
     photoSource?.dispose?.();
     state.busy = false;
     elements.shutterButton.disabled = !state.stream;
+    elements.galleryButton.disabled = false;
     setControlsDisabled(false);
     elements.countdown.textContent = "";
     if (state.serviceWorkerReloadPending && typeof requestServiceWorkerUpdate === "function") requestServiceWorkerUpdate();

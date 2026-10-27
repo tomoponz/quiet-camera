@@ -93,10 +93,45 @@ function openDatabase() {
   return databasePromise;
 }
 
+// Completed recordings can own their existing chunks, avoiding a duplicate
+// large IDB Blob allocation. The public storage API always returns full Blobs.
+async function hydrateStoredMedia(media) {
+  if(!media?.backingRecordingId)return media;
+  const chunks=await getRecordingChunks(media.backingRecordingId);
+  const bytes=chunks.reduce((sum,b)=>sum+b.size,0);
+  if(bytes!==media.backingSizeBytes || chunks.length!==media.backingChunkCount)throw new Error("保存動画のチャンクを読み取れません。データは削除していません");
+  const blob=new Blob(chunks,{type:media.mimeType||"video/webm"});
+  return {...media,blob,previewBlob:blob};
+}
+
+async function deleteStoredMediaRecords(ids,{requireAll=false}={}) {
+  if(!ids.length)return;
+  const database=await openDatabase(),targets=new Set(ids);
+  const transaction=database.transaction([MEDIA_STORE,CHUNK_STORE],"readwrite");
+  const done=transactionDone(transaction);done.catch(()=>{});
+  let failure=null;
+  const store=transaction.objectStore(MEDIA_STORE),request=store.getAll();
+  request.addEventListener("success",()=>{
+    try {
+      const records=request.result,selected=records.filter(m=>targets.has(m.id));
+      if(requireAll && selected.length!==targets.size)throw new Error("選択した項目が履歴から削除されています。選び直してください");
+      const liveReferences=new Set(records.filter(m=>!targets.has(m.id)).map(m=>m.backingRecordingId).filter(Boolean));
+      const releaseIds=new Set(selected.map(m=>m.backingRecordingId).filter(id=>id&&!liveReferences.has(id)));
+      for(const id of releaseIds){
+        const chunks=transaction.objectStore(CHUNK_STORE),cursor=chunks.index("sessionId").openKeyCursor(IDBKeyRange.only(id));
+        cursor.addEventListener("success",()=>{const c=cursor.result;if(c){chunks.delete(c.primaryKey);c.continue();}});
+      }
+      for(const id of targets)store.delete(id);
+    }catch(error){failure=error;try{transaction.abort();}catch{}}
+  });
+  try{await done;}catch(error){throw failure||error;}
+}
+
 async function putMedia(media) {
   const database = await openDatabase();
   const transaction = database.transaction(MEDIA_STORE, "readwrite");
-  transaction.objectStore(MEDIA_STORE).put(media);
+  const stored=media.backingRecordingId?{...media,blob:undefined,previewBlob:undefined}:media;
+  transaction.objectStore(MEDIA_STORE).put(stored);
   await transactionDone(transaction);
   return media;
 }
@@ -131,7 +166,29 @@ async function listStoredMediaPage({ offset = 0, limit = DEFAULT_MEDIA_PAGE_SIZE
   });
 
   await done;
-  return items;
+  return Promise.all(items.map(hydrateStoredMedia));
+}
+
+// Every record at or newer than minCreatedAt, newest first, read in one transaction.
+// The open history uses it to re-read exactly the window the user has loaded.
+async function listStoredMediaSince(minCreatedAt) {
+  const database = await openDatabase();
+  const transaction = database.transaction(MEDIA_STORE, "readonly");
+  const done = transactionDone(transaction);
+  const index = transaction.objectStore(MEDIA_STORE).index("createdAt");
+  const items = await new Promise((resolve, reject) => {
+    const results = [];
+    const request = index.openCursor(IDBKeyRange.lowerBound(Number(minCreatedAt) || 0), "prev");
+    request.addEventListener("success", () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(results); return; }
+      results.push(cursor.value);
+      cursor.continue();
+    });
+    request.addEventListener("error", () => reject(request.error || new Error("撮影履歴を読み込めませんでした")), { once: true });
+  });
+  await done;
+  return Promise.all(items.map(hydrateStoredMedia));
 }
 
 async function listStoredMedia() {
@@ -153,11 +210,18 @@ async function getStoredMedia(id) {
   const done = transactionDone(transaction);
   const item = await requestToPromise(transaction.objectStore(MEDIA_STORE).get(id));
   await done;
-  return item || null;
+  return item ? hydrateStoredMedia(item) : null;
 }
 
 // Match the gallery's createdAt/primary-key order without loading every Blob.
 // The inclusive bound also handles photos with identical capture timestamps.
+// PDFs made from existing photos (review "PDF" / history multi-page) are documents, not shots.
+// Older records have no origin field: their meta is "PDF · Nページ · ..." (captured PDFs: "PDF · W×H · ...").
+function isDerivedPdf(media) {
+  if (media?.mimeType !== "application/pdf" && media?.extension !== "pdf") return false;
+  return media.origin === "pdf-export" || /^PDF · \d+ページ/.test(media.meta || "");
+}
+
 async function findAdjacentPhoto(reference, direction) {
   if (!reference || !Number.isFinite(reference.createdAt) || reference.id == null) return null;
   if (!["older", "newer"].includes(direction)) throw new TypeError("Unknown photo direction");
@@ -177,7 +241,7 @@ async function findAdjacentPhoto(reference, direction) {
       const order = cursor.key === reference.createdAt ? indexedDB.cmp(cursor.primaryKey, reference.id)
         : cursor.key < reference.createdAt ? -1 : 1;
       const media = cursor.value;
-      if ((older ? order < 0 : order > 0) && media.kind === "photo") {
+      if ((older ? order < 0 : order > 0) && media.kind === "photo" && !isDerivedPdf(media)) {
         resolve({ id: cursor.primaryKey, createdAt: cursor.key });
       } else cursor.continue();
     });
@@ -188,10 +252,7 @@ async function findAdjacentPhoto(reference, direction) {
 }
 
 async function deleteStoredMedia(id) {
-  const database = await openDatabase();
-  const transaction = database.transaction(MEDIA_STORE, "readwrite");
-  transaction.objectStore(MEDIA_STORE).delete(id);
-  await transactionDone(transaction);
+  await deleteStoredMediaRecords([id]);
 }
 
 async function putRecordingSession(session) {
@@ -199,6 +260,54 @@ async function putRecordingSession(session) {
   const transaction = database.transaction(SESSION_STORE, "readwrite");
   transaction.objectStore(SESSION_STORE).put(session);
   await transactionDone(transaction);
+}
+
+async function getRecordingSession(sessionId) {
+  const database = await openDatabase();
+  const transaction = database.transaction(SESSION_STORE,"readonly");
+  const done = transactionDone(transaction);
+  const result = await requestToPromise(transaction.objectStore(SESSION_STORE).get(sessionId));
+  await done;
+  return result || null;
+}
+
+// One transaction prevents an interrupted cleanup from leaving half a session.
+async function deleteRecordingSessionData(sessionId) {
+  const database = await openDatabase();
+  const transaction = database.transaction([CHUNK_STORE,SESSION_STORE],"readwrite");
+  const done = transactionDone(transaction);
+  done.catch(() => {});
+  const store = transaction.objectStore(CHUNK_STORE);
+  const request = store.index("sessionId").openKeyCursor(IDBKeyRange.only(sessionId));
+  request.addEventListener("success", () => {
+    const cursor=request.result;
+    if (cursor) { store.delete(cursor.primaryKey); cursor.continue(); }
+    else transaction.objectStore(SESSION_STORE).delete(sessionId);
+  });
+  request.addEventListener("error", () => { try { transaction.abort(); } catch {} });
+  await done;
+}
+
+// Atomic promotion transfers ownership of existing chunks to completed media.
+// If any request fails, the transaction preserves the session and all chunks.
+async function commitRecordingMedia(media, sessionId) {
+  const database=await openDatabase();
+  const transaction=database.transaction([MEDIA_STORE,CHUNK_STORE,SESSION_STORE],"readwrite");
+  const done=transactionDone(transaction);done.catch(()=>{});
+  const request=transaction.objectStore(CHUNK_STORE).index("sessionId").getAll(IDBKeyRange.only(sessionId));
+  let failure=null;
+  request.addEventListener("success",()=>{
+    try {
+      const chunks=request.result;
+      const bytes=chunks.reduce((sum,c)=>sum+c.blob.size,0);
+      if(bytes!==media.blob.size || !chunks.length)throw new Error("録画チャンクの整合性を確認できないため保持します");
+      const stored={...media,blob:undefined,previewBlob:undefined,backingRecordingId:sessionId,backingSizeBytes:bytes,backingChunkCount:chunks.length};
+      transaction.objectStore(MEDIA_STORE).put(stored);
+      transaction.objectStore(SESSION_STORE).delete(sessionId);
+    }catch(error){failure=error;try{transaction.abort();}catch{}}
+  });
+  try{await done;}catch(error){throw failure||error;}
+  return media;
 }
 
 async function listRecordingSessions() {

@@ -110,4 +110,4 @@ try{
  const record={passed:true,engine:version.product,version:await evaluate('elements.versionBadge.textContent'),fixtureOnly:true,phoneBrowserOperated:false,checks:results,audit,exceptions,animation:{midpoint:mid,endpoint},limits:['PC Chromium only','No swipe-to-switch feature; no camera/audio semantics changed']};
  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(record,null,2));console.log(JSON.stringify({passed:true,checks:results.length,engine:version.product,audit,output}));
 }catch(error){await shot('failure.png').catch(()=>{});fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:error.stack,checks:results,exceptions},null,2));console.error(error);process.exitCode=1;}
-finally{await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();}
+finally{await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();}

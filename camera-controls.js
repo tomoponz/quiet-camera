@@ -184,6 +184,7 @@ if (typeof window !== "undefined") (() => {
   const CONTROL_DEBOUNCE_MS = 110;
   let zoomTaskRunner = null;
   let latestZoomRequestId = 0;
+  let zoomVerification = null;
 
   function recordingLocksCameraControls() {
     return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
@@ -319,6 +320,7 @@ if (typeof window !== "undefined") (() => {
   Q.invalidateCameraController = () => {
     clearFocusTimer();
     latestZoomRequestId += 1;
+    zoomVerification?.abort();
     zoomTaskRunner?.clear();
     state.cameraControlGeneration += 1;
     state.cameraControlTrack = null;
@@ -330,6 +332,7 @@ if (typeof window !== "undefined") (() => {
   Q.initializeCameraController = () => {
     clearFocusTimer();
     latestZoomRequestId += 1;
+    zoomVerification?.abort();
     zoomTaskRunner?.clear();
     state.cameraControlGeneration += 1;
     state.cameraControlTrack = state.videoTrack || null;
@@ -371,11 +374,17 @@ if (typeof window !== "undefined") (() => {
     return { accepted: false, error: finalError || new Error("Constraint was rejected") };
   }
 
-  async function readAppliedSetting(track, generation, key, expected, tolerance = 0.001) {
+  async function readAppliedSetting(track, generation, key, expected, tolerance = 0.001, signal) {
     const delays = [0, 90, 220, 420];
     let lastValue;
     for (const delay of delays) {
-      if (delay) await wait(delay);
+      if (signal?.aborted) return { verified: null, superseded: true };
+      if (delay) await new Promise(resolve => {
+        const done = () => { clearTimeout(timer); signal?.removeEventListener("abort", done); resolve(); };
+        const timer = setTimeout(done, delay);
+        signal?.addEventListener("abort", done, { once: true });
+      });
+      if (signal?.aborted) return { verified: null, superseded: true };
       if (!controlContextIsCurrent(track, generation)) return { verified: false, stale: true, value: lastValue };
       const value = track.getSettings?.()?.[key];
       if (value !== undefined) lastValue = value;
@@ -390,7 +399,7 @@ if (typeof window !== "undefined") (() => {
   }
 
   Q.applyManagedCameraControls = (updates = {}, {
-    ephemeral = {}, verifyKey = null, expectedValue = undefined, tolerance = 0.001,
+    ephemeral = {}, verifyKey = null, expectedValue = undefined, tolerance = 0.001, verificationSignal,
   } = {}) => enqueueControlOperation(async (track, generation) => {
     const nextDesired = Model.mergeDesired(state.cameraDesiredControls, updates);
     const patch = Model.buildManagedConstraintPatch(
@@ -412,7 +421,8 @@ if (typeof window !== "undefined") (() => {
     let verification = { verified: null, value: undefined };
     if (verifyKey) {
       const expected = expectedValue === undefined ? nextDesired[verifyKey] : expectedValue;
-      verification = await readAppliedSetting(track, generation, verifyKey, expected, tolerance);
+      verification = await readAppliedSetting(track, generation, verifyKey, expected, tolerance, verificationSignal);
+      if (verification.superseded) return { ...result, ...verification, patch };
       if (verification.stale || !controlContextIsCurrent(track, generation)) {
         return { ...result, ...verification, accepted: false, stale: true, patch };
       }
@@ -478,12 +488,12 @@ if (typeof window !== "undefined") (() => {
   };
 
   // Pointer/range input can outpace hardware. Keep one operation in flight and only the latest pending value.
-  zoomTaskRunner = Model.createLatestTaskRunner(async ({ id, track, generation, value, tolerance }) => {
+  zoomTaskRunner = Model.createLatestTaskRunner(async ({ id, track, generation, value, tolerance, verificationSignal }) => {
     if (!controlContextIsCurrent(track, generation) || recordingLocksCameraControls()) return;
     let result;
     try {
       result = await Q.applyManagedCameraControls({ zoom: value }, {
-        verifyKey: "zoom", expectedValue: value, tolerance,
+        verifyKey: "zoom", expectedValue: value, tolerance, verificationSignal,
       });
     } catch (error) {
       if (id === latestZoomRequestId) {
@@ -492,9 +502,11 @@ if (typeof window !== "undefined") (() => {
       }
       return;
     }
-    if (id !== latestZoomRequestId || result.stale) return;
+    if (id !== latestZoomRequestId || result.stale || result.superseded) return;
     if (!result.accepted) {
       console.error(result.error);
+      elements.zoomRange.value = String(state.currentZoom);
+      elements.zoomValue.value = `${state.currentZoom.toFixed(1)}×`;
       showToast("ズームを適用できませんでした");
       return;
     }
@@ -517,7 +529,13 @@ if (typeof window !== "undefined") (() => {
     const value = Q.roundToCapabilityStep(rawValue, capability, 0.1);
     const tolerance = Q.normalizeStep(capability.step, 0.1) / 2 + 1e-4;
     latestZoomRequestId += 1;
+    zoomVerification?.abort();
+    zoomVerification = new AbortController();
+    // The readout follows the requested slider position; capture state remains
+    // the last verified hardware value until the latest request completes.
+    elements.zoomValue.value = value.toFixed(1) + "×";
     return zoomTaskRunner.submit({
+      verificationSignal: zoomVerification.signal,
       id: latestZoomRequestId,
       track: state.videoTrack,
       generation: state.cameraControlGeneration,

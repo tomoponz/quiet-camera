@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
+import {readChildAudit,summarizeMediaAudits} from './media-audit.mjs';
 const root=path.resolve(import.meta.dirname,'..'),output=path.join(root,'test-results');
 fs.mkdirSync(output,{recursive:true});
-const results=[];
+const results=[],mediaAudits=[];
 async function run(args,env={}){
  const result=await new Promise(resolve=>{
   const child=spawn(process.execPath,args,{cwd:root,windowsHide:true,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
@@ -17,6 +18,9 @@ await Promise.all(suites.map(file=>run(['tests/'+file])));
 const syntax=[...fs.readdirSync(root).filter(f=>f.endsWith('.js')),...fs.readdirSync(import.meta.dirname).filter(f=>/\.(cjs|mjs)$/.test(f)).map(f=>'tests/'+f)];
 await Promise.all(syntax.map(file=>run(['--check',file])));
 const browsers=[
+ ['recording-safety-browser.test.mjs','QC_RECORDING_BROWSER_OUTPUT','recording-safety'],
+ ['review-history-regression-browser.test.mjs','QC_REVIEW_HISTORY_OUTPUT','review-history'],
+ ['pc-buttons-browser.test.mjs','QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT','pc-buttons'],
  ['layout-browser.test.mjs','QUIET_CAMERA_TEST_OUTPUT','layout'],
  ['media-review-browser.test.mjs','QUIET_CAMERA_REVIEW_TEST_OUTPUT','media'],
  ['modal-layer-browser.test.mjs','QUIET_CAMERA_MODAL_TEST_OUTPUT','history'],
@@ -25,12 +29,18 @@ const browsers=[
  ['preview-width-browser.test.mjs','QUIET_CAMERA_PREVIEW_TEST_OUTPUT','preview'],
  ['camera-overlay-browser.test.mjs','QUIET_CAMERA_OVERLAY_OUTPUT','overlay'],
  ['device-layout-browser.test.mjs','QUIET_CAMERA_DEVICE_TEST_OUTPUT','device'],
+ ['zoom-status-browser.test.mjs','QUIET_CAMERA_ZOOM_TEST_OUTPUT','zoom-status'],
+ ['gallery-interaction-browser.test.mjs','QUIET_CAMERA_GALLERY_TEST_OUTPUT','gallery'],
+ ['camera-transition-browser.test.mjs','QUIET_CAMERA_TRANSITION_TEST_OUTPUT','transition'],
+ ['review-action-bar-browser.test.mjs','QUIET_CAMERA_DETAIL_TEST_OUTPUT','detail-actions'],
+ ['gallery-action-bar-browser.test.mjs','QUIET_CAMERA_ACTIONS_TEST_OUTPUT','actions'],
+ ['preview-fit-browser.test.mjs','QUIET_CAMERA_FIT_OUTPUT','preview-fit'],
 ];
 let browserSuites=0;
 if(process.argv.includes('--browser')&&results.every(r=>r.code===0)){
  let cursor=0;
- await Promise.all(Array.from({length:2},async()=>{while(cursor<browsers.length){const[file,key,folder]=browsers[cursor++];await run(['tests/'+file],{[key]:path.join(output,folder),QUIET_CAMERA_REVIEW_FIXTURES:path.join(root,'tests/fixtures'),QUIET_CAMERA_OVERLAY_ROOT:root,QUIET_CAMERA_OVERLAY_BASELINE:'0'});browserSuites++;}}));
+ await Promise.all(Array.from({length:2},async()=>{while(cursor<browsers.length){const[file,key,folder]=browsers[cursor++];const startedAt=Date.now();const child=await run(['tests/'+file],{[key]:path.join(output,folder),QUIET_CAMERA_REVIEW_FIXTURES:path.join(root,'tests/fixtures'),QUIET_CAMERA_OVERLAY_ROOT:root,QUIET_CAMERA_OVERLAY_BASELINE:'0'});mediaAudits.push({suite:file,...readChildAudit({stdout:child.stdout,outputDir:path.join(output,folder),startedAt})});browserSuites++;}}));
 }
-const summary={passed:results.every(r=>r.code===0),recordedAt:new Date().toISOString(),sourceSuites:suites.length,syntaxChecks:syntax.length,browserSuites,deviceMediaUsed:false,results};
+const summary={passed:results.every(r=>r.code===0),recordedAt:new Date().toISOString(),sourceSuites:suites.length,syntaxChecks:syntax.length,browserSuites,...(()=>{const m=summarizeMediaAudits(mediaAudits);return {deviceMediaUsed:m.deviceMediaUsed,missingMediaAudit:m.missingAudit,mediaAudit:m.rows}})(),results};
 fs.writeFileSync(path.join(output,'aggregate.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify({passed:summary.passed,sourceSuites:summary.sourceSuites,syntaxChecks:summary.syntaxChecks,browserSuites}));if(!summary.passed)process.exitCode=1;

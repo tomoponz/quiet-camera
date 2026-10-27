@@ -47,5 +47,10 @@
     const canonical={x:safe.left+(usableWidth-frameWidth)/2,y:safe.top,width:frameWidth,height:frameWidth/aspect};
     return { canonical, viewport:rect(canonical,width,height,quarter) };
   }
-  return { rotation, size, insets, rect, matrix, fit };
+  function fitRegion(region, aspect) {
+    const width=Math.max(0,region.width),height=Math.max(0,region.height);
+    const fittedWidth=Math.min(width,height*aspect),fittedHeight=fittedWidth/aspect;
+    return {x:region.x+(width-fittedWidth)/2,y:region.y+height-fittedHeight,width:fittedWidth,height:fittedHeight};
+  }
+  return { rotation, size, insets, rect, matrix, fit, fitRegion };
 });

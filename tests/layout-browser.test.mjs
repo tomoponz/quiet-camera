@@ -123,13 +123,13 @@ try {
       cases.push({label,...m});
       if(cases.length===1)await screenshot('00-first-case');
       // Physical portrait top maps to viewport left on this CCW90 emulation.
-      assert(width>height?Math.abs(m.stage.x)<1:Math.abs(m.stage.y)<1,`${label}: frame lost its physical-top anchor`);
+      assert(width>height?m.buttons.every(b=>!overlap(b,m.stage)):Math.abs(m.stage.y)<1,`${label}: orientation-specific preview geometry changed`);
       assert(m.stage.x>=-.5&&m.stage.y>=-.5&&m.stage.right<=width+.5&&m.stage.bottom<=height+.5,`${label}: complete preview outside viewport`);
       for(const b of m.buttons) {
         assert(b.width>=43.9 && b.height>=43.9,`${label}: ${b.id} smaller than 44px`);
         assert(b.x>=-.5 && b.right<=width+.5 && b.y>=-.5 && b.bottom<=height+.5,`${label}: ${b.id} outside viewport`);
         assert(b.hit,`${label}: ${b.id} center is not clickable`);
-        if(width<=height) assert(b.x>=m.stage.x-.5 && b.right<=m.stage.right+.5,`${label}: ${b.id} clipped by preview`);
+        if(width>height) assert(!overlap(b,m.stage),`${label}: landscape preview overlaps ${b.id}`);
         assert(!overlap(b,m.badge),`${label}: recording badge overlaps ${b.id}`);
       }
       if(width<700 && width<=height) {
@@ -214,8 +214,8 @@ try {
   }
   await resizeKey('PageUp');
   await evaluate(`elements.closeSettingsButton.click()`);await settle();await evaluate(`elements.settingsButton.click()`);await settle();
-  assert(Math.abs((await measure()).sheet.height-313)<2,'Reopening should start at half the usable 641px viewport');
-  interactions.push({name:'reopen-default-half-height',...(await measure())});await screenshot('04-settings-handle-only');
+  assert(Math.abs((await measure()).sheet.height-633)<2,'Reopening should start at the full usable 641px viewport');
+  interactions.push({name:'reopen-default-full-height',...(await measure())});await screenshot('04-settings-handle-only');
   await evaluate(`document.querySelector('#settingsResizeHandle').focus()`);
   await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Home',code:'Home'});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home'});await settle();
   m=await measure();assert(Math.abs(m.sheet.height-m.sheet.min)<2,'Home did not clamp to minimum');
@@ -242,5 +242,5 @@ try {
   fs.writeFileSync(path.join(output,'layout-test-results.json'),JSON.stringify({passed:false,error:String(error),cases,interactions,exceptions},null,2));
   throw error;
 } finally {
-  await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();
+  await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();
 }

@@ -104,18 +104,17 @@ try{
   await sleep(160);await cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sleep(160);
  };
  const tap=async(x,y)=>{await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sleep(100);};
- const gallery=async()=>{await evaluate('(async()=>{await refreshGallery();renderGallery();elements.galleryButton.focus({preventScroll:true});elements.galleryDialog.showModal()})()');await sleep(100);};
+ const gallery=async()=>{await evaluate('(async()=>{await refreshGallery();renderGallery();elements.galleryButton.focus({preventScroll:true});elements.galleryDialog.showModal()})()');await until('!elements.galleryDialog.classList.contains("is-settling")');};
  const galleryClose=async()=>{await evaluate('elements.closeGalleryButton.click()');await until('!elements.galleryDialog.open');await sleep(100);};
  const scrollState=()=>evaluate('({y:scrollY,bodyTop:document.body.getBoundingClientRect().top,position:document.body.style.position,overflow:document.documentElement.style.overflow})');
  const stable=async(name,before)=>{const after=await scrollState();check(name,[after.y,after.bodyTop],[before.y,before.bodyTop]);};
  await evaluate('document.body.style.paddingRight="3px";window.scrollTo(0,460)');await sleep(70);
  const original=await evaluate('({x:scrollX,y:scrollY,body:document.body.getAttribute("style"),html:document.documentElement.getAttribute("style")})');
- await gallery();
- // Put an actual checkbox under the sticky toolbar. Hit testing must return
- // the toolbar, not the later card's z-index:2 label.
+ await gallery();await evaluate('document.querySelector("#gallerySelectionButton").click()');
+ // Put an actual checkbox beneath the independent bottom action dock.
  const overlap=await evaluate(`(()=>{
-  const d=elements.galleryDialog,t=d.querySelector('.gallery-toolbar');
-  for(let scroll=30;scroll<600;scroll+=10){
+  const d=document.querySelector('#gallerySheetBody'),t=document.querySelector('#gallerySelectionActions');
+  for(let scroll=0;scroll<d.scrollHeight;scroll+=5){
    d.scrollTop=scroll;const tr=t.getBoundingClientRect();
    for(const label of d.querySelectorAll('.gallery-select')){
     const r=label.getBoundingClientRect(),top=Math.max(r.top,tr.top),bottom=Math.min(r.bottom,tr.bottom);
@@ -124,7 +123,7 @@ try{
     return {point:{x,y},overlapping:true,toolbarWins:!!hit?.closest('.gallery-toolbar'),hit:hit?.outerHTML.slice(0,180),cardIsolation:getComputedStyle(label.closest('.gallery-card')).isolation,scrollTop:d.scrollTop};
    }
   }
-  throw new Error('No checkbox/toolbar overlap found in scroll range');
+  throw new Error('No checkbox/dock overlap found');
  })()`);
  await shot(baselineMode?'01-before-checkbox-overlap.png':'01-after-checkbox-overlap.png');
  if(baselineMode){
@@ -133,15 +132,15 @@ try{
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({baseline:true,engine:version.product,overlap,background:{before,after,moved:before.y!==after.y||before.bodyTop!==after.bodyTop},fixtureOnly:true},null,2));
   console.log(JSON.stringify({baseline:true,overlap,backgroundMoved:before.y!==after.y||before.bodyTop!==after.bodyTop,output}));
  }else{
-  check('checkbox is really under sticky toolbar',overlap.overlapping,true);check('sticky toolbar paints above checkbox',overlap.toolbarWins,true);check('card owns its stacking context',overlap.cardIsolation,'isolate');
+  check('checkbox is really under action dock',overlap.overlapping,true);check('action dock paints above checkbox',overlap.toolbarWins,true);check('card owns its stacking context',overlap.cardIsolation,'isolate');
   const locked=await scrollState();await wheel(2,8,370);await touchDrag(2,300,-160);await stable('backdrop wheel and touch do not move background',locked);
-  await evaluate('elements.galleryDialog.scrollTop=0');await wheel(200,500,400);check('history panel still scrolls',await evaluate('elements.galleryDialog.scrollTop>50'),true);await stable('panel wheel does not move page',locked);
-  await evaluate('elements.galleryDialog.scrollTop=0');await touchDrag(200,500,-150);check('history touch scrolling remains enabled',await evaluate('elements.galleryDialog.scrollTop>30'),true);
+  await evaluate('document.querySelector("#gallerySheetBody").scrollTop=0');await wheel(200,500,400);check('history panel still scrolls',await evaluate('document.querySelector("#gallerySheetBody").scrollTop>50'),true);await stable('panel wheel does not move page',locked);
+  await evaluate('document.querySelector("#gallerySheetBody").scrollTop=0');await touchDrag(200,500,-150);check('history touch scrolling remains enabled',await evaluate('document.querySelector("#gallerySheetBody").scrollTop>30'),true);
   for(const end of ['top','bottom']){
-   await evaluate(`elements.galleryDialog.scrollTop=${end==='top'?0:'elements.galleryDialog.scrollHeight'}`);await wheel(200,500,end==='top'?-600:600);await touchDrag(200,500,end==='top'?180:-180);await stable(end+' overscroll does not chain to background',locked);
+   await evaluate(`document.querySelector("#gallerySheetBody").scrollTop=${end==='top'?0:'document.querySelector("#gallerySheetBody").scrollHeight'}`);await wheel(200,500,end==='top'?-600:600);await touchDrag(200,500,end==='top'?180:-180);await stable(end+' overscroll does not chain to background',locked);
   }
   // The interactive checkbox retains its 44px label and selection behavior.
-  await evaluate('elements.galleryDialog.scrollTop=0');
+  await evaluate('document.querySelector("#gallerySheetBody").scrollTop=0');
   const labelPoint=await evaluate('(()=>{const r=document.querySelector(".gallery-select").getBoundingClientRect();return{x:r.x+20,y:r.y+20,width:r.width,height:r.height}})()');
   await tap(labelPoint.x,labelPoint.y);check('checkbox remains tappable',await evaluate('document.querySelector(".gallery-select input").checked'),true);check('checkbox touch target retained',[labelPoint.width,labelPoint.height],[44,44]);
   await galleryClose();check('close restores exact original scroll',await evaluate('scrollY'),original.y);check('close restores inline styles',await evaluate('[document.body.getAttribute("style"),document.documentElement.getAttribute("style")]'),[original.body,original.html]);
@@ -177,5 +176,5 @@ try{
  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:error.stack,checks:results,exceptions},null,2));console.error(error);process.exitCode=1;
 }finally{
  try{await command('Browser.close')}catch{}
- socket.close();server.close();
+ socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();
 }

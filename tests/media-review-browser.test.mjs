@@ -93,7 +93,7 @@ try{
   window.confirm=()=>true;
  `});
  await cdp('Page.navigate',{url});
- await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.24.1" && typeof findAdjacentPhoto === "function"');
+ await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.27.3" && typeof findAdjacentPhoto === "function"');
  await evaluate(`(async()=>{
   triggerDownload=(blob,name)=>__audit.downloads.push({name,size:blob.size,type:blob.type});
   const base=1700000000000;window.__base=base;
@@ -188,5 +188,5 @@ try{
  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:String(error.stack),results,exceptions,stateAtFailure,audit:await evaluate('({mediaCalls:__audit.mediaCalls,mediaStacks:__audit.mediaStacks})').catch(()=>null)},null,2));
  throw error;
 }finally{
- await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();
+ await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();
 }

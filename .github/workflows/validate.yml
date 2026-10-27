@@ -32,6 +32,8 @@ jobs:
         run: node tests/settings-sheet-motion.test.cjs
       - name: Device-relative layout regression tests
         run: node tests/device-layout.test.cjs
+      - name: Gallery archive regression tests
+        run: node tests/gallery-batch.test.cjs
       - name: Check every application script
         run: |
           for file in \
@@ -46,11 +48,15 @@ jobs:
             photo-review.js \
             fullscreen.js \
             camera-enhancements-core.js \
+            camera-transition.js \
             camera-devices.js \
             camera-controls.js \
             camera-capture.js \
             settings-sheet-motion.js \
             camera-enhancements.js \
+            gallery-batch.js \
+            gallery-selection.js \
+            history-sheet.js \
             device-layout-model.js \
             camera-overlay.js \
             service-worker.js; do

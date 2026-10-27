@@ -1,0 +1,21 @@
+const assert = require('node:assert/strict');
+const { zip, crc32 } = require('../gallery-batch.js');
+(async () => {
+  assert.equal(await crc32(new Blob(['123456789'])), 0xcbf43926, 'standard CRC32 vector');
+  await assert.rejects(zip([]), /選択/);
+  const signal = AbortSignal.abort();
+  await assert.rejects(zip([new File(['a'], 'one.png')], { signal }), { name: 'AbortError' });
+  await assert.rejects(zip([{ name: 'too-large.mp4', size: 0xffffffff }]), /4GB/);
+  await assert.rejects(zip(Array(65535).fill(null)), /ファイル数/);
+  const blob = await zip([new File(['alpha'], 'same.png'), new File(['beta'], 'same.png'), new File(['写真'], '写真.txt')]);
+  const bytes = new Uint8Array(await blob.arrayBuffer()), view = new DataView(bytes.buffer);
+  assert.equal(view.getUint32(0, true), 0x04034b50);
+  assert.equal(view.getUint16(6, true), 0x800, 'UTF-8 names');
+  assert.equal(view.getUint16(8, true), 0, 'stored without re-encoding');
+  assert.equal(view.getUint32(bytes.length - 22, true), 0x06054b50);
+  assert.equal(view.getUint16(bytes.length - 14, true), 3);
+  assert.equal(view.getUint16(bytes.length - 12, true), 3);
+  const central = view.getUint32(bytes.length - 6, true);
+  assert.equal(view.getUint32(central, true), 0x02014b50);
+  console.log('Gallery batch: CRC, ZIP records, Unicode, duplicates, limits and cancellation passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

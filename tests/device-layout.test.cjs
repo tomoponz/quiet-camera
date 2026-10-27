@@ -16,4 +16,11 @@ for(const q of [0,1,2,3])for(const [width,height]of[[393,800],[320,480],[641,360
  assert(Math.abs(r.width/r.height-(q%2?1/aspect:aspect))<1e-9);
  assert.equal(fit.canonical.y,safe.top);checks++;
 }
+for(const aspect of[9/16,3/4,1,16/9]){
+ const region={x:12,y:118,width:369,height:516},f=m.fitRegion(region,aspect);
+ assert(Math.abs(f.y+f.height-634)<1e-9);
+ assert(f.x>=12&&f.x+f.width<=381+.001&&f.y>=118);
+ assert(Math.abs(f.width/f.height-aspect)<1e-9);
+ assert(Math.abs(f.width-369)<1e-9||Math.abs(f.height-516)<1e-9);checks++;
+}
 console.log(JSON.stringify({passed:true,checks,clockwiseAndCounterclockwise:true,orientationLockUsed:false}));

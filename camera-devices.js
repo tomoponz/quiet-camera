@@ -65,7 +65,7 @@
       : false;
   }
 
-  async function openCameraStream() {
+  async function openCameraStream(generation) {
     const candidates = [
       { audio: buildAudioConstraints(), video: buildVideoConstraints() },
       { audio: buildAudioConstraints(), video: buildVideoConstraints({ relaxed: true }) },
@@ -78,9 +78,11 @@
 
     let finalError = null;
     for (const constraints of candidates) {
+      if (!cameraStartIsCurrent(generation)) throw new DOMException("カメラの切替は取り消されました", "AbortError");
       try {
         return await navigator.mediaDevices.getUserMedia(constraints);
       } catch (error) {
+        if (!cameraStartIsCurrent(generation)) throw error;
         finalError = error;
         if (state.selectedDeviceId && ["NotFoundError", "OverconstrainedError"].includes(error?.name)) {
           Q.removeStoredDevice();
@@ -179,6 +181,7 @@
     const generation = state.cameraStartGeneration + 1;
     state.cameraStartGeneration = generation;
 
+    if (state.stream || state.cameraTransitioning) Q.beginPreviewTransition();
     clearCameraControlTimers();
     Q.invalidateCameraController();
     stopCamera();
@@ -189,7 +192,7 @@
 
     let openedStream = null;
     try {
-      openedStream = await openCameraStream();
+      openedStream = await openCameraStream(generation);
       // getUserMedia has no abort signal; an obsolete result must be stopped explicitly.
       if (!cameraStartIsCurrent(generation)) {
         stopStreamTracks(openedStream);
@@ -205,6 +208,10 @@
         return;
       }
 
+      if (!await Q.waitForFirstVideoFrame(() => cameraStartIsCurrent(generation) && state.stream === openedStream)) {
+        stopStreamTracks(openedStream); return;
+      }
+      Q.endPreviewTransition();
       [state.videoTrack] = openedStream.getVideoTracks();
       if (!state.videoTrack) throw new Error("映像トラックを取得できませんでした");
 
@@ -213,7 +220,9 @@
       if (["user", "environment"].includes(settings.facingMode)) state.facingMode = settings.facingMode;
       state.isFrontCamera = (settings.facingMode || state.facingMode) === "user";
       elements.video.classList.toggle("mirrored", state.isFrontCamera);
-      syncVideoRatioWithTrack(settings);
+      // Decoded frame dimensions are authoritative if a driver reports an
+      // accepted aspectRatio that disagrees with the actual delivered pixels.
+      syncVideoRatioWithTrack({...settings,aspectRatio:elements.video.videoWidth&&elements.video.videoHeight?elements.video.videoWidth/elements.video.videoHeight:settings.aspectRatio});
       const resolution = settings.width && settings.height
         ? `${settings.width}×${settings.height}`
         : state.isFrontCamera ? "前面カメラ" : "カメラ";
@@ -268,6 +277,7 @@
     } catch (error) {
       stopStreamTracks(openedStream);
       if (!cameraStartIsCurrent(generation)) return;
+      Q.endPreviewTransition();
       console.error(error);
       if (state.stream === openedStream) stopCamera();
       else if (elements.video.srcObject === openedStream) elements.video.srcObject = null;

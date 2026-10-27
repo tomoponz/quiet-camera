@@ -68,8 +68,7 @@
     navigating = true;
     cancelGesture();
     newerButton.disabled = olderButton.disabled = true;
-    window.clearTimeout(state.briefReviewTimer);
-    state.briefReviewTimer = null;
+    cancelBriefReview();
     try {
       const adjacent = await findAdjacentPhoto(current, direction);
       const media = adjacent ? await getStoredMedia(adjacent.id) : null;
