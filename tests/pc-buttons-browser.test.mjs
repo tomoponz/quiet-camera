@@ -7,13 +7,30 @@ import os from 'node:os';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
+import {createHash} from 'node:crypto';
 const root=process.env.QUIET_CAMERA_GALLERY_ROOT||path.resolve(import.meta.dirname,'..');
 const output=process.env.QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT||path.resolve(root,'test-results/pc-buttons');
 const fixtures=process.env.QUIET_CAMERA_REVIEW_FIXTURES||path.resolve(root,'tests/fixtures');
 fs.mkdirSync(output,{recursive:true});
 const scratch=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-camera-media-review-'));
+const baselineRoot=path.join(scratch,'fixed-pc-baseline');
+const baselineFixture=path.join(root,'tests/fixtures/pc-controls-v20261025.3');
+const baselineMetadata=JSON.parse(fs.readFileSync(baselineFixture+'.json','utf8'));
+const baselineZip=fs.readFileSync(baselineFixture+'.zip');
+const hash=b=>createHash('sha256').update(b).digest('hex');
+assert.equal(hash(baselineZip),baselineMetadata.archiveSha256,'fixed baseline archive integrity');
+let offset=0;const extracted=new Set();
+while(baselineZip.readUInt32LE(offset)===0x04034b50){
+ const method=baselineZip.readUInt16LE(offset+8),size=baselineZip.readUInt32LE(offset+18),nameSize=baselineZip.readUInt16LE(offset+26),extraSize=baselineZip.readUInt16LE(offset+28);
+ assert.equal(method,0,'fixture uses stored ZIP entries');
+ const name=baselineZip.subarray(offset+30,offset+30+nameSize).toString('utf8'),start=offset+30+nameSize+extraSize,dest=path.resolve(baselineRoot,name);
+ assert(dest.startsWith(baselineRoot+path.sep),'baseline stays within owned scratch directory');
+ const metadata=baselineMetadata.files.find(f=>f.path===name),bytes=baselineZip.subarray(start,start+size);assert(metadata,'only manifest entries');assert.equal(hash(bytes),metadata.sha256,'fixed baseline file integrity '+name);
+ fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,bytes);extracted.add(name);offset=start+size;
+}
+assert.equal(extracted.size,baselineMetadata.files.length,'all fixed baseline files extracted');
 const server=http.createServer((req,res)=>{
- let pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);const isBaseline=pathname.startsWith('/__baseline/');if(isBaseline)pathname=pathname.slice('/__baseline'.length);const servedRoot=isBaseline?path.resolve(root,'../quiet-camera-gallery-action-labels-final'):root;
+ let pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);const isBaseline=pathname.startsWith('/__baseline/');if(isBaseline)pathname=pathname.slice('/__baseline'.length);const servedRoot=isBaseline?baselineRoot:root;
  let file;
  if(pathname.startsWith('/__fixture/')){
   const basename=pathname.slice('/__fixture/'.length);

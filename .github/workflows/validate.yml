@@ -74,3 +74,12 @@ jobs:
           node-version: 22
       - name: Synthetic browser and aggregate regressions
         run: node tests/run-all.mjs --browser
+      - name: Preserve synthetic regression failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-regression-evidence
+          path: |
+            test-results/**/*.json
+            test-results/**/*.png
+          retention-days: 7
