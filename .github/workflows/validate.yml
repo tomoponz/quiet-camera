@@ -67,18 +67,24 @@ jobs:
   browser-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      QC_PC_HEADED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Desktop input and controls preflight
+        env:
+          QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT: test-results/pc-preflight
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/pc-buttons-browser.test.mjs
       - name: Owned renderer crash preflight
         env:
           QC_RECORDING_FILTER: renderer crash
           QC_RECORDING_BROWSER_OUTPUT: test-results/crash-preflight
         run: node tests/recording-safety-browser.test.mjs
       - name: Synthetic browser and aggregate regressions
-        run: node tests/run-all.mjs --browser
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/run-all.mjs --browser
       - name: Preserve synthetic regression failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
