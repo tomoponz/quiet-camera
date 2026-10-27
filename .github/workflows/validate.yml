@@ -88,6 +88,11 @@ jobs:
           QC_RECORDING_FILTER: renderer crash
           QC_RECORDING_BROWSER_OUTPUT: test-results/crash-preflight
         run: node tests/recording-safety-browser.test.mjs
+      - name: Japanese desktop-label preflight
+        env:
+          QC_REVIEW_HISTORY_FILTER: ^P8
+          QC_REVIEW_HISTORY_OUTPUT: test-results/labels-preflight
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/review-history-regression-browser.test.mjs
       - name: Synthetic browser and aggregate regressions
         run: xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" node tests/run-all.mjs --browser
       - name: Preserve synthetic regression failure evidence
