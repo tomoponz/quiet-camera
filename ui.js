@@ -78,14 +78,13 @@ function updateReviewActions() {
 async function exportCurrentPhotoToPdf() {
   const media = state.selectedMedia;
   if (reviewOperation || media?.kind !== "photo" || media.mimeType === "application/pdf" || media.extension === "pdf") return;
-  cancelBriefReview();
   const controller = new AbortController(); reviewOperation = controller; updateReviewActions();
   try {
     const current = await getStoredMedia(media.id); controller.signal.throwIfAborted();
     if (!current) throw new Error("表示中の写真は削除されています");
     const page = await blobToJpegPage(current.previewBlob || current.blob); controller.signal.throwIfAborted();
     const blob = await jpegPagesToPdf([page]); controller.signal.throwIfAborted();
-    await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: current.previewBlob || current.blob, thumbnailBlob: current.thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: page.width, height: page.height, meta: "PDF · 1ページ · " + formatBytes(blob.size) }, { showReview: false });
+    await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: current.previewBlob || current.blob, thumbnailBlob: current.thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: page.width, height: page.height, meta: "PDF · 1ページ · " + formatBytes(blob.size) });
     // Stored: report it even if the review was closed while the write finished.
     showToast("表示中の写真をPDFとして履歴に保存しました");
   } catch (error) {
@@ -96,7 +95,6 @@ async function exportCurrentPhotoToPdf() {
 
 async function deleteSelectedMedia() {
   const media = state.selectedMedia;
-  cancelBriefReview();
   if (reviewOperation || !media || !window.confirm("この撮影結果を端末内の履歴から削除しますか？")) return;
   const controller = new AbortController(); reviewOperation = controller; updateReviewActions();
   let committed = false;
@@ -522,15 +520,6 @@ elements.shareButton.addEventListener("click", shareMedia);
 document.querySelector("#reviewPdfButton").addEventListener("click", exportCurrentPhotoToPdf);
 document.addEventListener("quietcamera:reviewchange", updateReviewActions);
 elements.reviewDialog.addEventListener("close", () => { if (!elements.reviewDialog.open) { reviewOperation?.abort(); reviewOperation = null; updateReviewActions(); } });
-// "2秒表示": contact pauses, release (all pointers up) restarts 2 s; keyboard input and actions keep it open.
-const briefPointers = new Set();
-// A second finger (pinch) or a long press (image context menu) means the user is inspecting: keep it open.
-elements.reviewDialog.addEventListener("pointerdown", event => { briefPointers.add(event.pointerId); if (briefPointers.size > 1) cancelBriefReview(); else pauseBriefReview(); }, { capture: true, passive: true });
-elements.reviewDialog.addEventListener("contextmenu", cancelBriefReview, { capture: true });
-for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, event => { if (briefPointers.delete(event.pointerId) && !briefPointers.size) resumeBriefReview(); }, { capture: true, passive: true });
-elements.reviewDialog.addEventListener("keydown", cancelBriefReview, { capture: true });
-elements.reviewDialog.addEventListener("click", event => { if (event.target.closest?.("button, a, input, select, video")) cancelBriefReview(); }, { capture: true });
-elements.reviewDialog.addEventListener("close", () => { if (!elements.reviewDialog.open) briefPointers.clear(); });
 updateReviewActions();
 elements.selectAllButton.addEventListener("click", toggleSelectAll);
 elements.deleteSelectedButton.addEventListener("click", deleteSelectedGalleryMedia);
@@ -549,7 +538,6 @@ elements.cameraPermissionDialog.addEventListener("close", () => setCameraPermiss
 elements.reviewDialog.addEventListener("close", () => {
   // close is queued: a rapid reopen must not clear the newly selected media.
   if (elements.reviewDialog.open) return;
-  cancelBriefReview();
   clearSelectedMedia();
   const returnFocus = state.reviewReturnFocus;
   state.reviewReturnFocus = null;
@@ -562,7 +550,6 @@ elements.galleryDialog.addEventListener("close", () => { if (!elements.galleryDi
 
 bindSetting(elements.photoFormatSelect, { updateStatus: true });
 bindSetting(elements.photoQualitySelect);
-bindSetting(elements.autoReviewSelect);
 bindSetting(elements.selfieMirrorSelect);
 bindSetting(elements.microphoneSelect, { restartCamera: true });
 elements.microphoneSelect.addEventListener("change", syncMicrophoneStatus);

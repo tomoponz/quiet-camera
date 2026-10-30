@@ -9,7 +9,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = process.env.QC_LAYOUT_ROOT || path.resolve(import.meta.dirname, '..');
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'quiet-camera-layout-'));
 const output = process.env.QUIET_CAMERA_TEST_OUTPUT || scratch;
 fs.mkdirSync(output, { recursive: true });
@@ -174,10 +174,13 @@ try {
   }
   await metrics(360,641);await evaluate(`document.documentElement.style.fontSize='16px'`);
   await evaluate(`if(document.documentElement.classList.contains('immersive-mode'))document.querySelector('#fullscreenButton').click();elements.recordingBadge.hidden=true;elements.settingsButton.click()`);await settle();
+  // Geometry assertions describe the settled sheet, not an arbitrary third animation frame.
+  await evaluate(`(async()=>{const d=elements.settingsDialog,end=performance.now()+1500;while(d.dataset.sheetState==='opening'||d.classList.contains('is-settling')){if(performance.now()>end)throw Error('Settings opening did not finish');await new Promise(r=>requestAnimationFrame(r));}})()`);await settle();
   let m=await measure();assert(m.sheet.open && !m.sheet.modal,'Settings must remain non-modal');
   assert.equal(await evaluate(`document.querySelectorAll('[data-sheet-size],.settings-size-button').length`),0,'Height presets must be absent');
   const handle=await evaluate(`(()=>{const h=document.querySelector('#settingsResizeHandle'),r=h.getBoundingClientRect();return {role:h.getAttribute('role'),label:h.getAttribute('aria-label'),tabIndex:h.tabIndex,width:r.width,height:r.height}})()`);
-  assert(handle.role==='separator' && handle.label.length>0 && handle.tabIndex===0 && handle.width>=44 && handle.height>=44,'Resize handle must remain labelled, focusable and touch sized');
+  interactions.push({name:'settings-handle-before-assert',handle});await screenshot('04-settings-handle-measure');
+  assert(handle.role==='separator' && handle.label.length>0 && handle.tabIndex===0 && handle.width>=44 && handle.height>=44,'Resize handle must remain labelled, focusable and touch sized: '+JSON.stringify(handle));
   interactions.push({name:'presets-absent-accessible-handle',handle});
   const resizeKey=async key=>{await evaluate(`document.querySelector('#settingsResizeHandle').focus({preventScroll:true})`);await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code:key});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code:key});await settle();};
   const heights=[];

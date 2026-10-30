@@ -589,6 +589,7 @@ async function finalizeRecording() {
       audio: recording.audio,
       meta: `${extension.toUpperCase()} · ${formatDuration(recording.durationMs)} · ${actualResolution} · ${formatBytes(blob.size)} · ${recording.audio ? "音声あり" : "音声なし"}`,
     }, {recordingSessionId:sessionId});
+    showToast("動画を保存しました");
   } catch (error) {
     if(error?.code === "VERIFICATION_DEFERRED"){
       try {const latest=await getRecordingSession(sessionId);if(latest)await putRecordingSession({...latest,status:"verification-pending",recoveryAttempts:0});}catch{}

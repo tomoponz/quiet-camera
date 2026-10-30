@@ -127,44 +127,12 @@ function clearSelectedMedia() {
   document.dispatchEvent(new Event("quietcamera:reviewchange"));
 }
 
-// "2秒表示": a contact pauses the countdown and its release restarts 2 s;
-// keyboard input and any review action keep the review open (cancel).
-function cancelBriefReview() {
-  window.clearTimeout(state.briefReviewTimer);
-  state.briefReviewTimer = null;
-  state.briefReviewPending = false;
-}
-function scheduleBriefReviewClose(delay = 2000) {
-  window.clearTimeout(state.briefReviewTimer);
-  state.briefReviewPending = true;
-  state.briefReviewTimer = window.setTimeout(() => {
-    state.briefReviewTimer = null;
-    state.briefReviewPending = false;
-    if (elements.reviewDialog.open) elements.reviewDialog.close();
-  }, delay);
-}
-function pauseBriefReview() {
-  if (!state.briefReviewPending) return;
-  window.clearTimeout(state.briefReviewTimer);
-  state.briefReviewTimer = null;
-}
-function resumeBriefReview() {
-  if (state.briefReviewPending && !state.briefReviewTimer && elements.reviewDialog.open) scheduleBriefReviewClose();
-}
-
-async function addMedia(media, { showReview = true, recordingSessionId = null } = {}) {
+// Saving never opens a viewer. Results are opened only by an explicit history action.
+async function addMedia(media, { recordingSessionId = null } = {}) {
   const stored = { ...media, id: media.id || makeId(media.kind), createdAt: media.createdAt || Date.now() };
   if (recordingSessionId) await commitRecordingMedia(stored,recordingSessionId);
   else await putMedia(stored);
   await refreshGallery();
-  if (!showReview) return stored;
-  const behavior = elements.autoReviewSelect.value;
-  // Never stack the automatic review on top of an open history sheet.
-  if (behavior === "never" || elements.galleryDialog.open) return stored;
-  selectMedia(stored);
-  state.reviewReturnFocus = elements.shutterButton;
-  elements.reviewDialog.showModal();
-  if (behavior === "brief") scheduleBriefReviewClose();
   return stored;
 }
 
@@ -275,6 +243,7 @@ async function capturePhoto() {
       meta: `${typeLabel} · ${elements.canvas.width}×${elements.canvas.height} · ${formatBytes(exportBlob.size)} · 画面比率で保存${photoSource.highQuality ? " · 高解像度" : " · プレビュー取得"}`,
     });
     flash();
+    showToast("写真を保存しました");
   } catch (error) {
     console.error(error);
     showToast(error?.message || "撮影に失敗しました");

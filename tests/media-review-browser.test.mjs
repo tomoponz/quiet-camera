@@ -93,7 +93,7 @@ try{
   window.confirm=()=>true;
  `});
  await cdp('Page.navigate',{url});
- await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.27.3" && typeof findAdjacentPhoto === "function"');
+ await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.30.1" && typeof findAdjacentPhoto === "function"');
  await evaluate(`(async()=>{
   triggerDownload=(blob,name)=>__audit.downloads.push({name,size:blob.size,type:blob.type});
   const base=1700000000000;window.__base=base;
