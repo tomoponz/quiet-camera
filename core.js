@@ -39,8 +39,6 @@ const elements = {
   photoFormatSelect: document.querySelector("#photoFormatSelect"),
   photoQualityField: document.querySelector("#photoQualityField"),
   photoQualitySelect: document.querySelector("#photoQualitySelect"),
-  autoReviewField: document.querySelector("#autoReviewField"),
-  autoReviewSelect: document.querySelector("#autoReviewSelect"),
   selfieMirrorField: document.querySelector("#selfieMirrorField"),
   selfieMirrorSelect: document.querySelector("#selfieMirrorSelect"),
   microphoneField: document.querySelector("#microphoneField"),
@@ -103,7 +101,6 @@ const DEFAULT_SETTINGS = {
   grid: false,
   photoFormat: "image/jpeg",
   photoQuality: "0.92",
-  autoReview: "always",
   selfieMirror: "mirrored",
   microphone: "off",
   videoResolution: "auto",
@@ -164,7 +161,6 @@ const state = {
   pinchStartDistance: 0,
   pinchStartZoom: 1,
   pinchGestureActive: false,
-  briefReviewTimer: null,
   reviewReturnFocus: null,
   pendingRecoverySessions: [],
 };
@@ -242,7 +238,6 @@ function collectSettings() {
     grid: !elements.gridOverlay.hidden,
     photoFormat: elements.photoFormatSelect.value,
     photoQuality: elements.photoQualitySelect.value,
-    autoReview: elements.autoReviewSelect.value,
     selfieMirror: elements.selfieMirrorSelect.value,
     microphone: "off",
     videoResolution: elements.videoResolutionSelect.value,
@@ -305,7 +300,6 @@ function syncVideoRatioWithTrack(settings, { announce = true } = {}) {
 function applySavedSettings() {
   elements.photoFormatSelect.value = savedSettings.photoFormat;
   elements.photoQualitySelect.value = savedSettings.photoQuality;
-  elements.autoReviewSelect.value = savedSettings.autoReview;
   elements.selfieMirrorSelect.value = savedSettings.selfieMirror;
   elements.microphoneSelect.value = "off";
   elements.videoResolutionSelect.value = savedSettings.videoResolution;
@@ -434,7 +428,7 @@ async function startCamera() {
 }
 
 function setControlsDisabled(disabled) {
-  const controls = [elements.photoModeButton, elements.videoModeButton, elements.microphoneStatusButton, elements.switchButton, elements.timerButton, elements.ratioButton, elements.photoFormatSelect, elements.photoQualitySelect, elements.autoReviewSelect, elements.selfieMirrorSelect, elements.microphoneSelect, elements.videoResolutionSelect, elements.videoFrameRateSelect, elements.videoQualitySelect, elements.recordingLimitSelect, elements.updateButton, elements.cameraSourceSelect, elements.manualFocusRange, elements.focusResetButton, elements.exposureIndexRange, elements.exposureResetButton].filter(Boolean);
+  const controls = [elements.photoModeButton, elements.videoModeButton, elements.microphoneStatusButton, elements.switchButton, elements.timerButton, elements.ratioButton, elements.photoFormatSelect, elements.photoQualitySelect, elements.selfieMirrorSelect, elements.microphoneSelect, elements.videoResolutionSelect, elements.videoFrameRateSelect, elements.videoQualitySelect, elements.recordingLimitSelect, elements.updateButton, elements.cameraSourceSelect, elements.manualFocusRange, elements.focusResetButton, elements.exposureIndexRange, elements.exposureResetButton].filter(Boolean);
   controls.forEach((control) => {
     const unsupportedManualFocus = [elements.manualFocusRange, elements.focusResetButton].includes(control) && !state.focusCapability;
     const unsupportedExposure = [elements.exposureIndexRange, elements.exposureResetButton].includes(control) && !state.exposureCapability;
@@ -462,7 +456,7 @@ function updateModeUi() {
   elements.videoModeButton.classList.toggle("active", !photoMode);
   elements.photoModeButton.setAttribute("aria-pressed", String(photoMode));
   elements.videoModeButton.setAttribute("aria-pressed", String(!photoMode));
-  [elements.photoFormatField, elements.photoQualityField, elements.autoReviewField, elements.selfieMirrorField].forEach((item) => { item.hidden = !photoMode; });
+  [elements.photoFormatField, elements.photoQualityField, elements.selfieMirrorField].forEach((item) => { item.hidden = !photoMode; });
   [elements.microphoneField, elements.videoResolutionField, elements.videoFrameRateField, elements.videoQualityField, elements.recordingLimitField].forEach((item) => { item.hidden = photoMode; });
   elements.ratioButton.hidden = false;
   elements.shutterButton.classList.toggle("video", !photoMode);

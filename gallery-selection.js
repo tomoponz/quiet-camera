@@ -183,7 +183,7 @@
       const pages = [];
       for (const photo of items) { pages.push(await blobToJpegPage(photo.previewBlob)); signal.throwIfAborted(); }
       const blob = await jpegPagesToPdf(pages); signal.throwIfAborted();
-      await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: items[0].previewBlob, thumbnailBlob: items[0].thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${items.length}ページ · ${formatBytes(blob.size)}` }, { showReview: false });
+      await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: items[0].previewBlob, thumbnailBlob: items[0].thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${items.length}ページ · ${formatBytes(blob.size)}` });
       if (signal.aborted) return;
       state.selectedGalleryIds.clear(); update(); // addMedia already refreshed and rendered the open list
       message(`${items.length}ページのPDFを履歴に作成しました`); showToast(`${items.length}ページのPDFを作成しました`);
