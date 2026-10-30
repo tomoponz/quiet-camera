@@ -62,7 +62,7 @@ const open=async id=>{
 };
 const metrics=async(w,h,touch=true)=>{await cdp('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:touch,screenWidth:w,screenHeight:h,screenOrientation:{type:w>h?'landscapePrimary':'portraitPrimary',angle:w>h?90:0}});await cdp('Emulation.setTouchEmulationEnabled',{enabled:touch});await sleep(40);};
 const swipe=async(dx,dy=0,{cancel=false,multi=false}={})=>{
- const p=await evaluate('(()=>{const r=document.querySelector("#reviewViewer").getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()');
+ const p=await evaluate(`(()=>{const v=state.selectedMedia?.kind==="video",r=(v?elements.reviewVideo:document.querySelector("#reviewViewer")).getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height*(v ? 0.2 : 0.5)}})()`);
  const point=(x,y,id=1)=>({x,y,id,radiusX:3,radiusY:3,force:1});
  await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(p.x,p.y)]});
  if(multi)await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(p.x,p.y),point(p.x+30,p.y,2)]});
@@ -93,7 +93,7 @@ try{
   window.confirm=()=>true;
  `});
  await cdp('Page.navigate',{url});
- await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.30.1" && typeof findAdjacentPhoto === "function"');
+ await until('document.querySelector("#versionBadge")?.textContent === "v2026.10.30.2" && typeof findAdjacentMedia === "function"');
  await evaluate(`(async()=>{
   triggerDownload=(blob,name)=>__audit.downloads.push({name,size:blob.size,type:blob.type});
   const base=1700000000000;window.__base=base;
@@ -109,9 +109,9 @@ try{
   await refreshGallery();
  })()`);
  check('gallery remains paged',await evaluate('state.gallery.length'),60);
- check('newest ties and videos skipped',await evaluate('(async()=>[await findAdjacentPhoto(await getStoredMedia("p071"),"older"),await findAdjacentPhoto(await getStoredMedia("p070b"),"older"),await findAdjacentPhoto(await getStoredMedia("p070"),"older")].map(x=>x?.id))()'),['p070b','p070a','p069']);
+ check('mixed order preserves timestamp ties',await evaluate('(async()=>[await findAdjacentMedia(await getStoredMedia("p071"),"older"),await findAdjacentMedia(await getStoredMedia("p070b"),"older"),await findAdjacentMedia(await getStoredMedia("p070"),"older")].map(x=>x?.id))()'),['v-landscape','p070a','v-portrait']);
  await open('p071');await shot('01-photo-navigation.png');
- await swipe(-100);await until('state.selectedMedia?.id === "p070b"');check('left swipe shows older photo',await selected(),'p070b');
+ await swipe(-100);await until('state.selectedMedia?.id === "v-landscape"');check('left swipe includes older video',await selected(),'v-landscape');
  await swipe(100);await until('state.selectedMedia?.id === "p071"');check('right swipe shows newer photo',await selected(),'p071');
  await swipe(100);check('newest boundary does not wrap',await selected(),'p071');
  await open('p000');await swipe(-100);check('oldest boundary does not wrap',await selected(),'p000');
@@ -123,7 +123,7 @@ try{
  await evaluate('elements.closeReviewButton.focus()');await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight'});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight'});await until('state.selectedMedia?.id === "p049"');check('ArrowRight shows older photo',await selected(),'p049');
  await until('!document.querySelector("#reviewNewerPhoto").disabled');await evaluate('document.querySelector("#reviewNewerPhoto").click()');await until('state.selectedMedia?.id === "p050"');check('newer button works',await selected(),'p050');
  const lastLoaded=await evaluate('state.gallery.filter(x=>x.kind === "photo").at(-1).id');await open(lastLoaded);
- const outside=await evaluate('(async()=>{const n=await findAdjacentPhoto(state.selectedMedia,"older");return {id:n.id,loaded:state.gallery.some(x=>x.id===n.id)}})()');check('next photo lies outside loaded page',outside.loaded,false);
+ const outside=await evaluate('(async()=>{const n=await findAdjacentMedia(state.selectedMedia,"older");return {id:n.id,loaded:state.gallery.some(x=>x.id===n.id)}})()');check('next photo lies outside loaded page',outside.loaded,false);
  await swipe(-100);await until(`state.selectedMedia?.id === ${JSON.stringify(outside.id)}`);check('swipe crosses gallery page boundary',await selected(),outside.id);
  await metrics(780,360);check('rotation preserves selection',await selected(),outside.id);await shot('02-photo-landscape.png');await metrics(360,780);
  await evaluate('elements.shareButton.click();elements.downloadButton.click()');check('share/download target current photo',await evaluate('[__audit.shares.at(-1)[0].size,__audit.downloads.at(-1).size]'),await evaluate('[state.selectedMedia.blob.size,state.selectedMedia.blob.size]'));
@@ -141,8 +141,9 @@ try{
   await open(id);await until('!!elements.reviewVideo.poster && elements.reviewVideo.videoWidth>0');
   check(id+' metadata dimensions',await evaluate('[elements.reviewVideo.videoWidth,elements.reviewVideo.videoHeight]'),[width,height]);
   check(id+' preview has nonzero layout',await evaluate('(()=>{const r=elements.reviewVideo.getBoundingClientRect();return r.width>20&&r.height>20})()'),true);
-  check(id+' photo navigation hidden',await evaluate('document.querySelector("#reviewPhotoNavigation").hidden'),true);
-  await swipe(-100);check(id+' swipe does not change video',await selected(),id);
+  check(id+' mixed navigation visible',await evaluate('document.querySelector("#reviewPhotoNavigation").hidden'),false);
+  // Mixed video swipes are covered by the dedicated interaction suite.
+
   await until('elements.reviewVideo.readyState >= 2');await sleep(120);
   await shot(id==='v-landscape'?'04-video-landscape.png':id==='v-portrait'?'05-video-portrait.png':'07-video-webm.png');
   await evaluate('elements.reviewVideo.play()');await until('elements.reviewVideo.currentTime > 0.1');await evaluate('elements.reviewVideo.pause()');

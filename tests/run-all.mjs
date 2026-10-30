@@ -18,6 +18,7 @@ await Promise.all(suites.map(file=>run(['tests/'+file])));
 const syntax=[...fs.readdirSync(root).filter(f=>f.endsWith('.js')),...fs.readdirSync(import.meta.dirname).filter(f=>/\.(cjs|mjs)$/.test(f)).map(f=>'tests/'+f)];
 await Promise.all(syntax.map(file=>run(['--check',file])));
 const browsers=[
+ ['mixed-review-browser.test.mjs','QC_MIXED_OUTPUT','mixed-review'],
  ['continuous-capture-browser.test.mjs','QC_CONTINUOUS_CAPTURE_OUTPUT','continuous-capture'],
  ['recording-safety-browser.test.mjs','QC_RECORDING_BROWSER_OUTPUT','recording-safety'],
  ['review-history-regression-browser.test.mjs','QC_REVIEW_HISTORY_OUTPUT','review-history'],

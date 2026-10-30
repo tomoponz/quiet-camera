@@ -126,7 +126,7 @@ h1 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.1; }
 .review-photo-nav button { min-height:44px; padding:8px; }
 .review-photo-status { grid-column:1/-1; margin:0; color:var(--muted); font-size:.72rem; line-height:1.5; }
 .review-viewer { position:relative; touch-action:pan-y pinch-zoom; }
-.review-viewer.is-page-zoomed, .review-viewer.is-video-review { touch-action:auto; }
+.review-viewer.is-page-zoomed { touch-action:auto; }
 .video-preview-status { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; margin:0; padding:8px; border-radius:8px; background:rgba(0,0,0,.8); color:#fff; font-size:.75rem; text-align:center; pointer-events:none; }
 .video-thumbnail { position:relative; }
 .video-thumbnail img { position:absolute; inset:0; }

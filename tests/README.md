@@ -7,7 +7,7 @@ node tests/run-all.mjs
 node tests/run-all.mjs --browser
 ```
 
-The first command runs source/PWA validation, unit suites, and JavaScript syntax checks. The second also runs eighteen browser suites using an installed Chromium/Google Chrome. Set `CHROME_PATH` if its executable is not in the usual Windows location or on PATH. Results and screenshots are written to ignored `test-results/`.
+The first command runs source/PWA validation, unit suites, and JavaScript syntax checks. The second also runs nineteen browser suites using an installed Chromium/Google Chrome. Set `CHROME_PATH` if its executable is not in the usual Windows location or on PATH. Results and screenshots are written to ignored `test-results/`.
 
 Browser suites create fresh profiles, deny camera and microphone access, and use temporary loopback servers, synthetic media and isolated storage. They do not attach to an existing browser or phone and do not read a user's gallery. Shared and downloaded files in the media suite are intercepted by test stubs.
 
@@ -43,6 +43,16 @@ The PC control suite uses the fixed v2026.10.25.3 production-assets fixture in `
 
 PC fixtures explicitly declare a fine mouse/hover input and assert that touch emulation changes the actual browser media queries, since a headless Linux runner may have no physical pointer. On Linux, where the runner's Chrome 155 leaves `Page.crash` pending, the crash fixture obtains the owner's renderer PID from a unique browser trace mark, verifies its type/ownership against the same browser's process inventory and a separate observer, and kills only that PID. It must then observe the crash, lock release and durable recovery; missing ownership or crash evidence fails the test. `QC_CRASH_BACKEND=owned-renderer` exercises that injection on other platforms. This never searches process names or targets an existing profile.
 
-Linux CI runs the PC suite with `QC_PC_HEADED=1` inside an ephemeral `xvfb-run` desktop with TCP listening disabled. This provides an actual virtual mouse/hover device across mobile/desktop emulation changes instead of relying on launch-only Blink settings or overriding the application's media-query results. Desktop and crash preflights fail early; the complete 18-suite aggregate still runs afterward. Xvfb is preinstalled on the runner and is closed by its wrapper; the user's desktop and trial server are unrelated.
+Linux CI runs the PC suite with `QC_PC_HEADED=1` inside an ephemeral `xvfb-run` desktop with TCP listening disabled. This provides an actual virtual mouse/hover device across mobile/desktop emulation changes instead of relying on launch-only Blink settings or overriding the application's media-query results. Desktop and crash preflights fail early; the complete 19-suite aggregate still runs afterward. Xvfb is preinstalled on the runner and is closed by its wrapper; the user's desktop and trial server are unrelated.
 
 Continuous capture regression uses real canvas-stream photos/recordings in isolated profiles. It verifies fresh/legacy automatic-review preferences never open a result modal, consecutive capture, delayed storage/finalization gates, quota errors, retained video recovery and explicit history playback. The removed automatic-review setting is ignored; existing media/settings keys and database schema are unchanged.
+
+Mixed photo/video detail navigation follows history order, including timestamp ties and page boundaries. Generated PDF documents remain excluded as before. The generated VP8/Opus tone fixture contains no camera or microphone data. Browser tests cover playback stop/unload, no autoplay, native-control regions, zoom, keyboard/buttons, boundaries, pending close/reselection, deletion and URL cleanup. Native mobile controls still require real-device checks.
+
+Generate the audio fixture with FFmpeg (no capture device):
+
+```sh
+ffmpeg -f lavfi -i testsrc2=size=360x240:rate=12 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 2 -c:v libvpx -b:v 250k -pix_fmt yuv420p -c:a libopus -b:a 32k -shortest tests/fixtures/synthetic-tone.webm
+```
+
+`synthetic-tone.json` records ffprobe-confirmed streams and the SHA256; regenerate its hash/stream metadata if the fixture is regenerated. The mixed suite validates the hash and drags the actual Chromium native timeline through CDP, asserting that playback position changes without history navigation.
