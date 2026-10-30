@@ -58,6 +58,9 @@ const open=async id=>{
  if(await evaluate('elements.reviewDialog.open'))await close();
  await evaluate(`(async()=>{selectMedia(await getStoredMedia(${JSON.stringify(id)}));elements.reviewDialog.showModal()})()`);
  await until('elements.reviewDialog.open && !!state.selectedMedia');
+ // Selection clears aria-busy before the next animation frame starts the lookup.
+ // Wait for its rendered status, not just the absence of aria-busy.
+ await until('!document.querySelector("#reviewPhotoNavigation").hidden && !document.querySelector("#reviewPhotoNavigation").hasAttribute("aria-busy") && !!document.querySelector("#reviewPhotoStatus").textContent');
  if(await evaluate('state.selectedMedia.kind === "photo"'))await until('elements.reviewImage.complete && elements.reviewImage.naturalWidth > 0 && !document.querySelector("#reviewPhotoNavigation").hasAttribute("aria-busy")');
 };
 const metrics=async(w,h,touch=true)=>{await cdp('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:touch,screenWidth:w,screenHeight:h,screenOrientation:{type:w>h?'landscapePrimary':'portraitPrimary',angle:w>h?90:0}});await cdp('Emulation.setTouchEmulationEnabled',{enabled:touch});await sleep(40);};
@@ -98,7 +101,27 @@ try {
  await open('existing-pdf');check('existing PDF cannot be converted as photo',await evaluate('document.querySelector("#reviewPdfButton").disabled'),true);
  await open('p2');await evaluate('window.__confirm=false;elements.deleteButton.click()');await sleep(40);check('delete cancel preserves current and other photos',await evaluate('(async()=>[!!await getStoredMedia("p2"),!!await getStoredMedia("p0"),state.selectedMedia.id,elements.reviewDialog.open])()'),[true,true,'p2',true]);
  await evaluate('window.__confirm=true;window.__originalDelete=deleteStoredMedia;deleteStoredMedia=async()=>{throw new Error("Synthetic delete failure")};elements.deleteButton.click()');await busyDone();check('delete failure retains open current item',await selected(),'p2');await evaluate('deleteStoredMedia=__originalDelete;elements.deleteButton.click()');await until('!elements.reviewDialog.open');await busyDone();check('delete removes only current, not multi selection',await evaluate('(async()=>[!!await getStoredMedia("p2"),!!await getStoredMedia("p0"),!!await getStoredMedia("p1"),[...state.selectedGalleryIds].sort()])()'),[false,true,true,['p0','p1']]);
- await open('p3');await evaluate('deleteStoredMedia=async id=>{await new Promise(r=>setTimeout(r,160));return __originalDelete(id)};elements.deleteButton.click();document.querySelector("#reviewOlderPhoto").click()');await until('state.selectedMedia.id==="p1"');await busyDone();check('navigation during delete preserves new current photo',await evaluate('(async()=>[!!await getStoredMedia("p3"),!!await getStoredMedia("p1"),state.selectedMedia.id,elements.reviewDialog.open])()'),[false,true,'p1',true]);await evaluate('deleteStoredMedia=__originalDelete');
+ // Navigation wins: hold deletion until the next selection is actually displayed.
+ await open('p3');
+ await evaluate('(async()=>{window.__p3ForRace=await getStoredMedia("p3");deleteStoredMedia=async id=>{await new Promise(r=>window.__releaseDelete=r);return __originalDelete(id)};elements.deleteButton.click()})()');
+ await until('typeof window.__releaseDelete === "function"');
+ await until('!document.querySelector("#reviewOlderPhoto").disabled');
+ await evaluate('document.querySelector("#reviewOlderPhoto").click()');
+ await until('state.selectedMedia?.id === "p1"');
+ await evaluate('__releaseDelete();true');await busyDone();
+ check('navigation during delete preserves new current photo',await evaluate('(async()=>[!!await getStoredMedia("p3"),!!await getStoredMedia("p1"),state.selectedMedia?.id,elements.reviewDialog.open])()'),[false,true,'p1',true]);
+ await evaluate('deleteStoredMedia=__originalDelete');
+ // Deletion wins: a slow neighboring read must never reopen a closed viewer.
+ await close();await evaluate('putMedia(__p3ForRace)');await open('p3');
+ await evaluate('window.__originalGet=getStoredMedia;window.__navigationReadReturned=false;getStoredMedia=async id=>{if(id==="p1"){await new Promise(r=>window.__releaseNavigationRead=r);const m=await __originalGet(id);window.__navigationReadReturned=true;return m}return __originalGet(id)};document.querySelector("#reviewOlderPhoto").click()');
+ await until('typeof window.__releaseNavigationRead === "function"');
+ await evaluate('elements.deleteButton.click()');
+ await until('!elements.reviewDialog.open && !state.selectedMedia');await busyDone();
+ await evaluate('__releaseNavigationRead();true');await until('window.__navigationReadReturned');
+ check('delete before pending navigation cannot reopen viewer',await evaluate('[elements.reviewDialog.open,state.selectedMedia]'),[false,null]);
+ await evaluate('getStoredMedia=__originalGet');
+ check('both delete orders preserve neighboring photo',await evaluate('(async()=>[!!await getStoredMedia("p3"),!!await getStoredMedia("p1")])()'),[false,true]);
+ await open('p1');
  for(const [w,h,q,font]of[[393,800,0,16],[320,480,0,16],[800,393,1,16],[800,393,3,16],[641,274,1,32],[641,274,3,32],[393,800,0,32]]){
   await cdp('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:true,screenWidth:w,screenHeight:h,screenOrientation:{type:q===3?'landscapeSecondary':q===1?'landscapePrimary':'portraitPrimary',angle:q*90}});await evaluate(`document.documentElement.style.fontSize='${font}px';document.querySelector('.review-layout').scrollTop=0`);await sleep(80);
   const key=[w,h,q,font].join('-');const getBar=()=>evaluate('(()=>{const a=document.querySelector("#reviewActionBar"),r=a.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}})()');const bar=await getBar();

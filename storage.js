@@ -214,7 +214,7 @@ async function getStoredMedia(id) {
 }
 
 // Match the gallery's createdAt/primary-key order without loading every Blob.
-// The inclusive bound also handles photos with identical capture timestamps.
+// The inclusive bound also handles media with identical capture timestamps.
 // PDFs made from existing photos (review "PDF" / history multi-page) are documents, not shots.
 // Older records have no origin field: their meta is "PDF · Nページ · ..." (captured PDFs: "PDF · W×H · ...").
 function isDerivedPdf(media) {
@@ -222,9 +222,9 @@ function isDerivedPdf(media) {
   return media.origin === "pdf-export" || /^PDF · \d+ページ/.test(media.meta || "");
 }
 
-async function findAdjacentPhoto(reference, direction) {
+async function findAdjacentMedia(reference, direction) {
   if (!reference || !Number.isFinite(reference.createdAt) || reference.id == null) return null;
-  if (!["older", "newer"].includes(direction)) throw new TypeError("Unknown photo direction");
+  if (!["older", "newer"].includes(direction)) throw new TypeError("Unknown media direction");
   const database = await openDatabase();
   const transaction = database.transaction(MEDIA_STORE, "readonly");
   const done = transactionDone(transaction);
@@ -241,11 +241,11 @@ async function findAdjacentPhoto(reference, direction) {
       const order = cursor.key === reference.createdAt ? indexedDB.cmp(cursor.primaryKey, reference.id)
         : cursor.key < reference.createdAt ? -1 : 1;
       const media = cursor.value;
-      if ((older ? order < 0 : order > 0) && media.kind === "photo" && !isDerivedPdf(media)) {
+      if ((older ? order < 0 : order > 0) && ["photo", "video"].includes(media.kind) && !isDerivedPdf(media)) {
         resolve({ id: cursor.primaryKey, createdAt: cursor.key });
       } else cursor.continue();
     });
-    request.addEventListener("error", () => reject(request.error || new Error("前後の写真を読み込めませんでした")), { once: true });
+    request.addEventListener("error", () => reject(request.error || new Error("前後の撮影結果を読み込めませんでした")), { once: true });
   });
   await done;
   return result;

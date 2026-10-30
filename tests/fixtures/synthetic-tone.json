@@ -1,0 +1,18 @@
+{
+  "generated": "FFmpeg lavfi testsrc2 + sine 440Hz; no camera/microphone",
+  "sha256": "59ac3fe95c9cee0fe3e29a3374825da72bd3a2c7c1d342aac4b19c3df182f00f",
+  "streams": [
+    {
+      "kind": "video",
+      "codec": "vp8",
+      "width": 360,
+      "height": 240
+    },
+    {
+      "kind": "audio",
+      "codec": "opus",
+      "channels": 1,
+      "sampleRate": "48000"
+    }
+  ]
+}

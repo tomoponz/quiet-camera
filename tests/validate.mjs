@@ -51,12 +51,12 @@ for (const file of ["index.html", "privacy.html", ...styles, ...scripts, "manife
 if (!serviceWorker.includes('const CACHE_PREFIX = "quiet-camera-"')) throw new Error("Cache cleanup must be scoped to Quiet Camera");
 if (!serviceWorker.includes("key.startsWith(CACHE_PREFIX)")) throw new Error("Service worker may delete caches belonging to other apps");
 if (!serviceWorker.includes("networkFirst(event.request)")) throw new Error("Static app assets must use network-first refresh behavior");
-const assetVersion = "20261030.1";
+const assetVersion = "20261030.2";
 for (const file of [...styles, ...scripts, "manifest.webmanifest"]) {
   if (!html.includes(`./${file}?v=${assetVersion}`)) throw new Error(`HTML asset version is stale: ${file}`);
   if (!serviceWorker.includes(`./${file}?v=${assetVersion}`)) throw new Error(`Service worker asset version is stale: ${file}`);
 }
-if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v39"')) throw new Error("Service worker cache version is stale");
+if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v40"')) throw new Error("Service worker cache version is stale");
 if (!privacyHtml.includes(`./styles.css?v=${assetVersion}`)) throw new Error("Privacy page asset version is stale");
 for (const asset of ["sitemap.xml", "images/quiet-camera-og.png"]) {
   if (!fs.existsSync(path.join(root, asset))) throw new Error(`Missing SEO asset: ${asset}`);
