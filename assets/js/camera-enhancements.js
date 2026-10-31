@@ -5,6 +5,8 @@
   const Q = window.QuietCameraEnhancements;
 
   elements.cameraSourceSelect.addEventListener("change", async () => {
+    if (elements.cameraSourceSelect.disabled || state.busy || state.recordingFinalizing
+      || (state.recorder && state.recorder.state !== "inactive")) return;
     Q.storeSelectedDevice(elements.cameraSourceSelect.value);
     await Q.enhancedStartCamera();
   });

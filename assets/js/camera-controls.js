@@ -187,7 +187,7 @@ if (typeof window !== "undefined") (() => {
   let zoomVerification = null;
 
   function recordingLocksCameraControls() {
-    return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+    return state.busy || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
   }
 
   function getSupportedConstraintFlags() {
@@ -233,8 +233,8 @@ if (typeof window !== "undefined") (() => {
     elements.exposureIndexRange.value = String(currentIndex);
     elements.exposureIndexValue.value = Q.formatEv(state.currentExposure);
     elements.exposureIndexRange.setAttribute("aria-valuetext", Q.formatEv(state.currentExposure));
-    elements.exposureIndexRange.disabled = false;
-    elements.exposureResetButton.disabled = false;
+    elements.exposureIndexRange.disabled = recordingLocksCameraControls();
+    elements.exposureResetButton.disabled = recordingLocksCameraControls();
     elements.exposureAvailability.hidden = true;
     elements.exposureSettingField.hidden = false;
   }
@@ -280,8 +280,8 @@ if (typeof window !== "undefined") (() => {
       ? focusValueLabel(current, state.focusCapability)
       : "自動";
     elements.manualFocusRange.setAttribute("aria-valuetext", elements.manualFocusValue.value);
-    elements.manualFocusRange.disabled = false;
-    elements.focusResetButton.disabled = false;
+    elements.manualFocusRange.disabled = recordingLocksCameraControls();
+    elements.focusResetButton.disabled = recordingLocksCameraControls();
     elements.manualFocusAvailability.hidden = true;
     elements.manualFocusField.hidden = false;
   }
@@ -654,7 +654,7 @@ if (typeof window !== "undefined") (() => {
       Q.enhancedUpdateCapabilities();
       showToast("AFを再要求しました");
     } finally {
-      elements.focusResetButton.disabled = false;
+      elements.focusResetButton.disabled = recordingLocksCameraControls();
     }
   };
 

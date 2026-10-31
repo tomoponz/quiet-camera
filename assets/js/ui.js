@@ -84,9 +84,9 @@ async function exportCurrentPhotoToPdf() {
     if (!current) throw new Error("表示中の写真は削除されています");
     const page = await blobToJpegPage(current.previewBlob || current.blob); controller.signal.throwIfAborted();
     const blob = await jpegPagesToPdf([page]); controller.signal.throwIfAborted();
-    await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: current.previewBlob || current.blob, thumbnailBlob: current.thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: page.width, height: page.height, meta: "PDF · 1ページ · " + formatBytes(blob.size) });
+    const saved = await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: current.previewBlob || current.blob, thumbnailBlob: current.thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: page.width, height: page.height, meta: "PDF · 1ページ · " + formatBytes(blob.size) });
     // Stored: report it even if the review was closed while the write finished.
-    showToast("表示中の写真をPDFとして履歴に保存しました");
+    showToast(saveResultMessage("表示中の写真をPDFとして履歴に保存しました", saved));
   } catch (error) {
     if (error?.name === "AbortError") showToast("表示を閉じたためPDF化を中止しました");
     else { console.error(error); showToast(error?.name === "QuotaExceededError" ? "空き容量が足りないためPDFを保存できませんでした" : error.message || "PDFを作成できませんでした"); }
@@ -143,11 +143,12 @@ function updateGallerySummary() {
   const total = getGalleryTotalCount();
   const loaded = state.gallery.length;
   const loadedText = total > loaded ? `${total}件中 ${loaded}件を表示` : `${total}件`;
-  elements.gallerySummary.textContent = loadedText;
+  const unavailable = state.gallery.filter(media => media.unavailable).length;
+  elements.gallerySummary.textContent = loadedText + (unavailable ? `（読み込めない項目 ${unavailable}件）` : "");
 }
 
 function updateGalleryButton() {
-  const latest = state.gallery[0];
+  const latest = state.gallery.find(media => !media.unavailable);
   const total = getGalleryTotalCount();
   elements.galleryCount.textContent = String(total);
   elements.galleryCount.hidden = total === 0;
@@ -191,6 +192,7 @@ function renderGallery({ appendFrom = null } = {}) {
     const card = document.createElement("article");
     card.className = "gallery-card";
     card.dataset.id = media.id;
+    if (media.unavailable) card.dataset.unavailable = "true";
     const selectLabel = document.createElement("label");
     selectLabel.className = "gallery-select";
     const checkbox = document.createElement("input");
@@ -209,6 +211,10 @@ function renderGallery({ appendFrom = null } = {}) {
     openButton.className = "gallery-open";
     openButton.setAttribute("aria-label", `${mediaLabel}を開く`);
     openButton.addEventListener("click", () => {
+      if (media.unavailable) {
+        showToast("この項目は読み込めません。元のデータは保持しています。削除する場合は項目を選択してください");
+        return;
+      }
       selectMedia(media);
       state.reviewReturnFocus = elements.galleryButton;
       elements.galleryDialog.close();
@@ -216,7 +222,12 @@ function renderGallery({ appendFrom = null } = {}) {
     });
     const visual = document.createElement("div");
     visual.className = "gallery-visual";
-    if (media.kind === "photo") {
+    if (media.unavailable) {
+      const warning = document.createElement("span");
+      warning.textContent = "読み込めない項目";
+      visual.append(warning);
+      openButton.setAttribute("aria-label", `${mediaLabel}。読み込めない項目。元のデータは保持しています`);
+    } else if (media.kind === "photo") {
       const url = URL.createObjectURL(media.thumbnailBlob || media.previewBlob || media.blob);
       state.galleryObjectUrls.set(media.id, url);
       const image = document.createElement("img");
@@ -231,7 +242,8 @@ function renderGallery({ appendFrom = null } = {}) {
     const info = document.createElement("div");
     info.className = "gallery-info";
     const kind = media.kind === "video" ? "動画" : media.extension.toUpperCase();
-    info.innerHTML = `<strong>${kind}</strong><span>${formatMediaDate(media.createdAt)}</span><small>${formatBytes(media.blob.size)}</small>`;
+    info.innerHTML = `<strong>${kind}</strong><span>${formatMediaDate(media.createdAt)}</span><small></small>`;
+    info.lastElementChild.textContent = media.unavailable ? media.unavailableReason : formatBytes(media.blob.size);
     openButton.append(visual, info);
     card.append(selectLabel, openButton);
     elements.galleryGrid.append(card);
@@ -241,6 +253,14 @@ function renderGallery({ appendFrom = null } = {}) {
 
 function refreshGallery(options) {
   return window.QuietCameraEnhancements.refreshPagedGallery(options);
+}
+
+async function refreshGalleryAfterSave() {
+  try { await refreshGallery(); return true; }
+  catch (error) {
+    console.warn("Media was saved, but its gallery could not be refreshed.", error);
+    return false;
+  }
 }
 
 async function refreshRecoveryNotice() {
@@ -387,10 +407,14 @@ async function installApp() {
 }
 
 function bindSetting(control, { restartCamera = false, updateStatus = false } = {}) {
-  control.addEventListener("change", async () => {
+  control.addEventListener("change", async (event) => {
+    if (control.disabled || state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive")) {
+      event.stopImmediatePropagation();
+      return;
+    }
     persistCurrentSettings();
     if (updateStatus) updateMediaStatus();
-    if (restartCamera && state.stream) await startCamera();
+    if (restartCamera && (state.stream || state.cameraStartPending || state.cameraTransitioning)) await startCamera();
   });
 }
 
@@ -440,13 +464,19 @@ function requestServiceWorkerUpdate() {
 async function initializeApp() {
   applySavedSettings();
   updateModeUi();
-  await recoverInterruptedRecordings();
-  await refreshGallery();
+  try { await refreshGallery(); }
+  catch (error) { console.warn("Initial gallery read failed; recovery will still be attempted.", error); showToast("履歴を読み込めませんでした。もう一度履歴を開いてください"); }
   if (!mediaRecorderSupported()) {
     elements.videoModeButton.disabled = true;
     elements.videoModeButton.title = "このブラウザは動画録画に対応していません";
     elements.videoSupportStatus.textContent = "このブラウザは動画録画に対応していません。写真モードを利用できます。";
     if (state.mode === "video") { state.mode = "photo"; updateModeUi(); }
+  }
+  try { await recoverInterruptedRecordings(); }
+  catch (error) { console.warn("Interrupted recording recovery failed; existing history remains available.", error); showToast("中断した録画の確認に失敗しました。一時データは保持しています"); }
+  finally {
+    try { await refreshGallery(); }
+    catch (error) { console.warn("Gallery refresh after recovery failed.", error); }
   }
 }
 

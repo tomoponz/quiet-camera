@@ -132,8 +132,14 @@ async function addMedia(media, { recordingSessionId = null } = {}) {
   const stored = { ...media, id: media.id || makeId(media.kind), createdAt: media.createdAt || Date.now() };
   if (recordingSessionId) await commitRecordingMedia(stored,recordingSessionId);
   else await putMedia(stored);
-  await refreshGallery();
-  return stored;
+  const galleryUpdated = await refreshGalleryAfterSave();
+  // Reporting status is returned to the caller only, never persisted with the media.
+  return { ...stored, galleryUpdated };
+}
+
+function saveResultMessage(message, saved) {
+  return saved.galleryUpdated === false
+    ? `${message}。履歴の更新に失敗しました。履歴を開き直してください` : message;
 }
 
 function getVisiblePhotoRatio() {
@@ -216,9 +222,14 @@ async function capturePhoto() {
     let previewBlob;
     let thumbnailBlob = null;
     let typeLabel;
+    let outputWidth = elements.canvas.width;
+    let outputHeight = elements.canvas.height;
     if (requestedType === "application/pdf") {
       previewBlob = await canvasToBlob(elements.canvas, "image/jpeg", quality);
-      exportBlob = await jpegPagesToPdf([await blobToJpegPage(previewBlob)]);
+      const page = await blobToJpegPage(previewBlob);
+      exportBlob = await jpegPagesToPdf([page]);
+      outputWidth = page.width;
+      outputHeight = page.height;
       typeLabel = "PDF";
     } else {
       exportBlob = await canvasToBlob(elements.canvas, requestedType, quality);
@@ -231,19 +242,19 @@ async function capturePhoto() {
       console.warn("Photo thumbnail generation failed; using the preview image.", error);
     }
 
-    await addMedia({
+    const saved = await addMedia({
       kind: "photo",
       blob: exportBlob,
       previewBlob,
       thumbnailBlob,
       extension: PHOTO_EXTENSIONS[exportBlob.type] || PHOTO_EXTENSIONS[requestedType] || "jpg",
       mimeType: exportBlob.type,
-      width: elements.canvas.width,
-      height: elements.canvas.height,
-      meta: `${typeLabel} · ${elements.canvas.width}×${elements.canvas.height} · ${formatBytes(exportBlob.size)} · 画面比率で保存${photoSource.highQuality ? " · 高解像度" : " · プレビュー取得"}`,
+      width: outputWidth,
+      height: outputHeight,
+      meta: `${typeLabel} · ${outputWidth}×${outputHeight} · ${formatBytes(exportBlob.size)} · 画面比率で保存${photoSource.highQuality ? " · 高解像度" : " · プレビュー取得"}`,
     });
     flash();
-    showToast("写真を保存しました");
+    showToast(saveResultMessage("写真を保存しました", saved));
   } catch (error) {
     console.error(error);
     showToast(error?.message || "撮影に失敗しました");

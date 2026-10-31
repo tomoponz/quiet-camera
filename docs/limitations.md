@@ -2,9 +2,9 @@
 
 [READMEへ戻る](../README.md)
 
-2026年10月31日の構成整理後も、以下の操作・保存形式・制約を維持しています。固定コミットへのリンクは整理前の実装根拠です。現在のファイル配置は[構成と処理の流れ](architecture.md)を参照してください。
+現在のファイル配置は[構成と処理の流れ](architecture.md)を参照してください。ソースへのリンクは、この文書と同じ版の実装を指します。
 
-制約の説明の基準にした整理前の公開版は `v2026.10.30.2`（コミット `9922270`）です。機能がコード上に存在することと、特定の端末で動作確認を終えていることは別です。端末ごとの確認日・対象版・未確認事項は[検証記録](verification.md)を参照してください。
+この文書は `v2026.10.31.2` の制約を説明しています。機能がコード上に存在することと、特定の端末で動作確認を終えていることは別です。端末ごとの確認日・対象版・未確認事項は[検証記録](verification.md)を参照してください。
 
 ## 動作に必要な条件
 
@@ -41,7 +41,7 @@ AF操作はブラウザーのAPIへ要求を送る処理です。要求が成功
 
 ## PDF・複数保存
 
-複数ページPDFの作成では、画像の写真を最大20枚までまとめ、各画像の長辺を最大2048pxに縮小します。動画や既存PDFの結合には対応していません。複数選択時の「端末に保存」は、元ファイルをZIPにまとめてダウンロードします。ZIPやPDFの生成時にも一時的なメモリと保存容量が必要です。
+PDF形式での1枚撮影・1枚のPDF書き出し・複数ページPDFのいずれも、埋め込む画像の長辺は最大2048pxです。PDF用画像への再圧縮には固定のJPEG品質0.92を使います。写真の品質設定でこの値は変わりませんが、元画像の画質の影響は残ります。複数ページPDFには画像の写真を最大20枚までまとめられます。動画や既存PDFの結合には対応していません。複数選択時の「端末に保存」は、元ファイルをZIPにまとめてダウンロードします。ZIPやPDFの生成時にも一時的なメモリと保存容量が必要です。
 
 ## 更新と確認範囲
 
@@ -51,10 +51,10 @@ AF操作はブラウザーのAPIへ要求を送る処理です。要求が成功
 
 ## 実装の参照先
 
-- カメラの起動条件とエラー表示：[camera-devices.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/camera-devices.js#L167)
-- 動画機能の判定：[ui.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/ui.js#L480)
-- 録画の容量方針とロック：[video.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L5)
-- 中断録画の復元・一時データの保存：[video.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L639)
-- PDFの上限：[photo.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/photo.js#L3)
+- カメラの起動条件とエラー表示：[camera-devices.js](../assets/js/camera-devices.js)
+- 動画機能の判定：[ui.js](../assets/js/ui.js)
+- 録画の容量方針とロック：[video.js](../assets/js/video.js)
+- 中断録画の復元・一時データの保存：[video.js](../assets/js/video.js)
+- PDFの上限：[photo.js](../assets/js/photo.js)
 
 [使い方](usage.md) · [データと権限](data-and-permissions.md)

@@ -1,3 +1,4 @@
+import {createOwnedScratch,cleanupBrowserTest} from './browser-cleanup.mjs';
 // Synthetic media only, with a fresh browser profile and isolated storage.
 // No real camera, microphone, phone, or user gallery is used.
 import assert from 'node:assert/strict';
@@ -12,7 +13,9 @@ const root=process.env.QUIET_CAMERA_GALLERY_ROOT||path.resolve(import.meta.dirna
 const output=process.env.QUIET_CAMERA_PC_BUTTONS_TEST_OUTPUT||path.resolve(root,'test-results/pc-buttons');
 const fixtures=process.env.QUIET_CAMERA_REVIEW_FIXTURES||path.resolve(root,'tests/fixtures');
 fs.mkdirSync(output,{recursive:true});
-const scratch=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-camera-media-review-'));
+const scratch=createOwnedScratch('quiet-camera-media-review-');
+let server,chrome,socket,cleanupCommand;const pending=new Map();
+try {
 const baselineRoot=path.join(scratch,'fixed-pc-baseline');
 const baselineFixture=path.join(root,'tests/fixtures/pc-controls-v20261025.3');
 const baselineMetadata=JSON.parse(fs.readFileSync(baselineFixture+'.json','utf8'));
@@ -29,7 +32,7 @@ while(baselineZip.readUInt32LE(offset)===0x04034b50){
  fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,bytes);extracted.add(name);offset=start+size;
 }
 assert.equal(extracted.size,baselineMetadata.files.length,'all fixed baseline files extracted');
-const server=http.createServer((req,res)=>{
+server=http.createServer((req,res)=>{
  let pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);const isBaseline=pathname.startsWith('/__baseline/');if(isBaseline)pathname=pathname.slice('/__baseline'.length);const servedRoot=isBaseline?baselineRoot:root;
  let file;
  if(pathname.startsWith('/__fixture/')){
@@ -50,20 +53,21 @@ server.listen(0,'127.0.0.1');await once(server,'listening');
 const url=`http://127.0.0.1:${server.address().port}/`;
 // Linux CI supplies an owned Xvfb desktop/mouse. Check actual media queries
 // after every touch change; launch flags alone do not survive that change.
-const chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),[...(process.env.QC_PC_HEADED==='1'?[]:['--headless=new']),'--remote-debugging-port=0',`--user-data-dir=${scratch}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),[...(process.env.QC_PC_HEADED==='1'?[]:['--headless=new']),'--remote-debugging-port=0',`--user-data-dir=${scratch}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let stderr='';
 const endpoint=await new Promise((resolve,reject)=>{
  const timer=setTimeout(()=>reject(new Error('Chrome startup timed out '+stderr)),15000);
  chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1]);}});
- chrome.on('error',reject);chrome.on('exit',code=>{clearTimeout(timer);reject(new Error('Chrome exited '+code));});
+ chrome.on('error',error=>{clearTimeout(timer);reject(error)});chrome.on('exit',code=>{clearTimeout(timer);reject(new Error('Chrome exited '+code));});
 });
-const socket=new WebSocket(endpoint);await once(socket,'open');let seq=1;
-const pending=new Map(),exceptions=[];let sessionId;
+socket=new WebSocket(endpoint);await once(socket,'open');let seq=1;
+const exceptions=[];let sessionId;
 socket.addEventListener('message',event=>{
  const m=JSON.parse(event.data);if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails);
  if(!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result);
 });
 function command(method,params={},session){return new Promise((resolve,reject)=>{const id=seq++;const timer=setTimeout(()=>{pending.delete(id);reject(new Error(method+' timed out'));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params,...(session?{sessionId:session}:{})}));});}
+cleanupCommand=command;
 const cdp=(m,p={})=>command(m,p,sessionId);
 const evaluate=async expression=>{const r=await cdp('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -177,4 +181,8 @@ try{
  for(const b of candidateResults){const a=baselineResults.find(a=>a.key===b.key);if(b.enabled)comparisons.push({key:b.key,spec:b.spec,buttons:b.buttons.map(e=>({id:e.id,before:a.buttons.find(a=>a.id===e.id),after:e}))});}
  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,version:'2026.10.30.2',checks:results,labelCases:globalThis.__labelCases,baselineResults,candidateResults,comparisons,audit,limits:['Headless PC Chrome synthetic geometry and mouse/keyboard only; no real camera or S25 operation','Native capture/camera/torch/MIC actions intercepted, never invoked','PC UI enabled only for primary fine+hover and viewport>=1000x600']},null,2));console.log(JSON.stringify({passed:true,checks:results.length,measuredCases:candidateResults.length,output}));
 }catch(error){await shot('failure.png').catch(()=>{});fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:error.stack,checks:results,labelCases:globalThis.__labelCases,baselineResults,candidateResults,exceptions},null,2));console.error(error);process.exitCode=1;}
-finally{await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();}
+} catch(error) {
+ fs.writeFileSync(path.join(output,'harness-failure.json'),JSON.stringify({passed:false,error:error.stack},null,2));console.error(error);process.exitCode=1;
+} finally {
+ await cleanupBrowserTest({scratch,chrome,socket,command:cleanupCommand,server,output,pending});
+}

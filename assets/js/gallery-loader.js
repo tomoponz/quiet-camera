@@ -67,7 +67,7 @@
       let page = floor === null ? await listStoredMediaPage({ offset, limit: state.galleryPageSize }) : await listStoredMediaSince(floor);
       if (floor !== null && page.length < state.galleryPageSize) page = await listStoredMediaPage({ offset: 0, limit: state.galleryPageSize });
       const total = await countStoredMedia();
-      for (const id of state.selectedGalleryIds) if (!await getStoredMedia(id)) state.selectedGalleryIds.delete(id);
+      for (const id of state.selectedGalleryIds) if (!await getStoredMedia(id, { allowUnavailable: true })) state.selectedGalleryIds.delete(id);
       await refreshRecoveryNotice().catch((error) => console.warn("Recovery status could not be loaded.", error));
 
       const anchor = append ? null : captureGalleryAnchor();
@@ -120,7 +120,11 @@
         updatePagedGalleryUi();
         elements.galleryDialog.showModal();
       })();
-      try { await galleryOpenRequest; } finally { galleryOpenRequest = null; }
+      try { await galleryOpenRequest; }
+      catch (error) {
+        console.warn("Gallery could not be opened; stored data is retained.", error);
+        showToast("履歴を読み込めませんでした。データは保持しています。もう一度開いてください");
+      } finally { galleryOpenRequest = null; }
     };
 
     // aria-disabled instead of disabled: a disabled focused button drops keyboard focus to <body>.
@@ -132,6 +136,9 @@
       const hadFocus = document.activeElement === loadMoreButton, before = elements.galleryGrid.children.length;
       try {
         await Q.refreshPagedGallery({ append: true });
+      } catch (error) {
+        console.warn("More gallery records could not be loaded.", error);
+        showToast("続きの履歴を読み込めませんでした。もう一度お試しください");
       } finally {
         loadingMore = false;
         loadMoreButton.removeAttribute("aria-disabled");

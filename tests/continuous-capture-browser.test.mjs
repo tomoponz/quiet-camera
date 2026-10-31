@@ -1,3 +1,4 @@
+import {createOwnedScratch,cleanupBrowserTest} from './browser-cleanup.mjs';
 // Actual MediaRecorder with canvas-only input, plus explicit fake-recorder
 // fault injection. Fresh profile/origin/database; no existing browser/USB use.
 import assert from 'node:assert/strict';
@@ -6,7 +7,7 @@ import http from 'node:http';import {spawn} from 'node:child_process';import {on
 const root=process.env.QC_CONTINUOUS_CAPTURE_ROOT||path.resolve(import.meta.dirname,'..');
 const output=process.env.QC_CONTINUOUS_CAPTURE_OUTPUT||path.join(root,'test-results/continuous-capture-browser');
 fs.mkdirSync(output,{recursive:true});
-const profile=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-camera-p1p5-isolated-'));
+const profile=createOwnedScratch('quiet-camera-p1p5-isolated-');
 const results=[],details={},targets=[],contexts=[],pages=[],exceptions=[],mediaAuditSnapshots=[];let socket,chrome,server,seq=0;const pending=new Map();let checks=0;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function save(){fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({root,profile,origin:details.origin,checks,results,details,exceptions,audit:{nativeMediaCalls:mediaAuditSnapshots.reduce((s,n)=>s+n,0)},permissionChanges:0,existingTrialOrUsbChanges:false},null,2))}
@@ -50,7 +51,7 @@ try{
   }catch(e){res.writeHead(404).end(String(e.message))}
  });server.listen(0,'127.0.0.1');await once(server,'listening');details.origin=`http://127.0.0.1:${server.address().port}`;
  chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),[...(process.env.QC_PC_HEADED==='1'?[]:['--headless=new']),'--remote-debugging-port=0',`--user-data-dir=${profile}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--autoplay-policy=no-user-gesture-required','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
- let stderr='';const endpoint=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Isolated Chrome startup timeout: '+stderr)),20000);chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1])}});chrome.on('error',reject)});
+ let stderr='';const endpoint=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Isolated Chrome startup timeout: '+stderr)),20000);chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1])}});chrome.on('error',error=>{clearTimeout(timer);reject(error)})});
  socket=new WebSocket(endpoint);await once(socket,'open');socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails);if(!pending.has(m.id))return;const x=pending.get(m.id);pending.delete(m.id);clearTimeout(x.timer);m.error?x.reject(Error(JSON.stringify(m.error))):x.resolve(m.result)});
  details.browser=await command('Browser.getVersion');
  async function live(p,mode='photo'){
@@ -119,9 +120,10 @@ try{
   await record(p);await finish(p);await until(p,'!state.recordingLockRelease');check('next recording still works after recovery',await p.eval('countStoredMedia()'),3);await unchanged(p);
  });
 
+ check('no uncaught browser exceptions',exceptions,[]);
 }catch(e){details.fatal=e.stack;console.error(e);process.exitCode=1}
 finally{
- if(socket?.readyState===WebSocket.OPEN){for(const id of contexts)await command('Target.disposeBrowserContext',{browserContextId:id}).catch(()=>{});await command('Browser.close',{},undefined,3000).catch(()=>{});socket.close()}
- if(chrome&&!chrome.killed)chrome.kill();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));details.cleanup={temporaryServerClosed:true,temporaryBrowserCloseRequested:true,existingTrialOrUsbChanged:false};save();
+ details.cleanup=await cleanupBrowserTest({scratch:profile,chrome,socket,command,server,output,pending});save();
 }
+
 console.log(JSON.stringify({checks,passed:results.filter(x=>x.status==='passed').length,failed:results.filter(x=>x.status==='failed').length,output}));if(results.some(x=>x.status==='failed'))process.exitCode=1;

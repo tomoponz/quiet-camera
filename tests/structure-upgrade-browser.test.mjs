@@ -1,3 +1,4 @@
+import {createOwnedScratch,cleanupBrowserTest} from './browser-cleanup.mjs';
 // A real Service Worker and IndexedDB upgrade at the Pages project subpath.
 // All media is generated or the existing synthetic fixture. This owns its
 // loopback server, Chrome profile, browser context, and temporary baseline.
@@ -13,7 +14,7 @@ import {createHash} from 'node:crypto';
 const BASE = 'd1d3387cc2a9d09584f44dcabcdd8e56f61ae231';
 const root = path.resolve(import.meta.dirname, '..');
 const output = process.env.QC_STRUCTURE_UPGRADE_OUTPUT || path.join(root, 'test-results/structure-upgrade');
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'quiet-camera-structure-upgrade-'));
+const scratch = createOwnedScratch('quiet-camera-structure-upgrade-');
 const baseline = path.join(scratch, 'baseline');
 const profile = path.join(scratch, 'profile');
 fs.mkdirSync(output, {recursive: true});
@@ -85,10 +86,10 @@ try {
     fs.writeFileSync(destination, git(['show', BASE + ':' + name]));
   }
   details.bytePreserved = {};
-  for (const name of ['storage.js', 'styles.css', 'fullscreen.css', 'camera-enhancements.css', 'camera-overlay.css']) {
-    const destination = path.join(root, name.endsWith('.css') ? 'assets/css' : 'assets/js', name);
+  for (const name of ['styles.css', 'fullscreen.css', 'camera-enhancements.css', 'camera-overlay.css']) {
+    const destination = path.join(root, 'assets/css', name);
     const before = hash(fs.readFileSync(path.join(baseline, name))), after = hash(fs.readFileSync(destination));
-    check('unchanged storage/CSS bytes: ' + name, after, before);
+    check('unchanged CSS bytes: ' + name, after, before);
     details.bytePreserved[name] = before;
   }
   server = http.createServer((request, response) => {
@@ -146,8 +147,13 @@ try {
     const canvas=document.createElement('canvas');canvas.width=96;canvas.height=64;const ctx=canvas.getContext('2d');ctx.fillStyle='#167b91';ctx.fillRect(0,0,96,64);ctx.fillStyle='#facb39';ctx.fillRect(7,9,39,23);
     const image=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
     await putMedia({id:'compat-photo',kind:'photo',createdAt:1001,blob:image,previewBlob:image,thumbnailBlob:image,mimeType:image.type,extension:'png',width:96,height:64});
-    const pdf=await jpegPagesToPdf([await blobToJpegPage(image)]);
-    await putMedia({id:'compat-pdf',kind:'photo',derivedDocument:true,createdAt:1002,blob:pdf,previewBlob:image,mimeType:'application/pdf',extension:'pdf',width:96,height:64});
+    selectMedia(await getStoredMedia('compat-photo'));
+    await exportCurrentPhotoToPdf();
+    const exported=(await listStoredMedia()).filter(media=>media.origin==='pdf-export');
+    if(exported.length!==1)throw Error('The old application did not generate exactly one PDF');
+    const pdf=exported[0];await deleteStoredMedia(pdf.id);
+    await putMedia({...pdf,id:'compat-pdf',createdAt:1002});
+    clearSelectedMedia();
     const video=await fetch('./__fixture/landscape.mp4').then(r=>r.blob());
     await putMedia({id:'compat-legacy-video',kind:'video',createdAt:1003,blob:video,previewBlob:video,mimeType:'video/mp4',extension:'mp4',width:320,height:180});
     const size=Math.floor(video.size/3);for(let i=0;i<3;i++)await putRecordingChunk('compat-backed-session',i,video.slice(i*size,i===2?video.size:(i+1)*size));
@@ -166,6 +172,7 @@ try {
   check('normal reload retains the old worker controller',await evaluate('!!navigator.serviceWorker.controller'));
   details.before = await evaluate(snapshotExpression);
   check('old fixture has four persisted media records',details.before.rows.media.length,4);
+  check('old PDF uses the real old application export shape',details.before.rows.media.some(item=>item.id==='compat-pdf'&&item.origin==='pdf-export'&&item.mimeType==='application/pdf'&&item.extension==='pdf'&&item.width===96&&item.height===64&&item.meta.includes('1ページ')));
   check('old fixture includes chunk-backed completion',details.before.rows.media.some(item=>item.backingRecordingId==='compat-backed-session'));
   check('old legacy recovery row remains pending',details.before.rows.recordingSessions.map(item=>item.id),['compat-legacy-pending']);
   check('old settings restore microphone OFF',await evaluate('elements.microphoneSelect.value'),'off');
@@ -185,7 +192,7 @@ try {
   check('candidate loads scripts beneath the project path',await evaluate('Array.from(document.scripts).every(s=>s.src.startsWith(location.origin+"/quiet-camera/assets/js/"))'));
   check('candidate loads styles beneath the project path',await evaluate('Array.from(document.querySelectorAll("link[rel=stylesheet]")).every(s=>s.href.startsWith(location.origin+"/quiet-camera/assets/css/"))'));
   check('candidate retains the worker scope',await evaluate('(async()=>(await navigator.serviceWorker.getRegistration()).scope)()'),details.url);
-  await until('(async()=>(await caches.keys()).includes("quiet-camera-shell-v41"))()');
+  await until('(async()=>(await caches.keys()).includes("quiet-camera-shell-v42"))()');
   const cachesAfter=await evaluate('caches.keys()');
   check('old shell cache is retired after activation',cachesAfter.includes('quiet-camera-shell-v40'),false);
   check('unrelated cache is preserved',cachesAfter.includes('unrelated-application-test'));
@@ -237,9 +244,5 @@ try {
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:error.stack,checks,details,exceptions,requests,audit:{nativeMediaCalls:mediaAudits.length?mediaAudits.reduce((sum,value)=>sum+value,0):null}},null,2));
   console.error(error);process.exitCode=1;
 } finally {
-  if(socket?.readyState===WebSocket.OPEN)await command('Browser.close',{},null,3000).catch(()=>{});
-  socket?.close();
-  if(chrome&&!chrome.killed)chrome.kill();
-  if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
-  for(const request of pending.values())clearTimeout(request.timer);
+  details.cleanup=await cleanupBrowserTest({scratch,chrome,socket,command,server,output,pending});
 }

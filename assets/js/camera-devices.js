@@ -5,7 +5,7 @@
   const stageControls = document.querySelector(".camera-top-controls");
 
   function recordingLocksCamera() {
-    return Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+    return state.busy || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
   }
 
   function setCameraInteractionReady(ready) {
@@ -22,6 +22,16 @@
 
   function cameraStartIsCurrent(generation) {
     return generation === state.cameraStartGeneration;
+  }
+
+  function permissionDenied(error) {
+    return ["NotAllowedError", "SecurityError", "PermissionDeniedError"].includes(error?.name);
+  }
+
+  function cameraRequestSettings() {
+    return JSON.stringify([state.mode, microphoneEnabled(), state.videoRatio,
+      elements.videoResolutionSelect.value, elements.videoFrameRateSelect.value,
+      state.selectedDeviceId, state.facingMode]);
   }
 
   function buildVideoConstraints({ useSelectedDevice = true, relaxed = false, enforceVideoRatio = true } = {}) {
@@ -83,6 +93,9 @@
         return await navigator.mediaDevices.getUserMedia(constraints);
       } catch (error) {
         if (!cameraStartIsCurrent(generation)) throw error;
+        // Permission refusal is not a constraint mismatch. Never prompt again
+        // as part of the same user request, including selected-device fallbacks.
+        if (permissionDenied(error)) throw error;
         finalError = error;
         if (state.selectedDeviceId && ["NotFoundError", "OverconstrainedError"].includes(error?.name)) {
           Q.removeStoredDevice();
@@ -180,6 +193,8 @@
 
     const generation = state.cameraStartGeneration + 1;
     state.cameraStartGeneration = generation;
+    state.cameraStartPending = true;
+    const requestedSettings = cameraRequestSettings();
 
     if (state.stream || state.cameraTransitioning) Q.beginPreviewTransition();
     clearCameraControlTimers();
@@ -198,6 +213,16 @@
         stopStreamTracks(openedStream);
         return;
       }
+      if (requestedSettings !== cameraRequestSettings()) {
+        stopStreamTracks(openedStream);
+        return await Q.enhancedStartCamera();
+      }
+      if (!microphoneEnabled()) {
+        for (const track of openedStream.getAudioTracks()) {
+          track.stop();
+          openedStream.removeTrack(track);
+        }
+      }
 
       state.stream = openedStream;
       elements.video.srcObject = openedStream;
@@ -211,6 +236,7 @@
       if (!await Q.waitForFirstVideoFrame(() => cameraStartIsCurrent(generation) && state.stream === openedStream)) {
         stopStreamTracks(openedStream); return;
       }
+      if (requestedSettings !== cameraRequestSettings()) return await Q.enhancedStartCamera();
       Q.endPreviewTransition();
       [state.videoTrack] = openedStream.getVideoTracks();
       if (!state.videoTrack) throw new Error("映像トラックを取得できませんでした");
@@ -273,6 +299,11 @@
       if (!cameraStartIsCurrent(generation) || state.stream !== openedStream) return;
       await requestWakeLock();
 
+      if (cameraStartIsCurrent(generation) && microphoneEnabled()
+        && !openedStream.getAudioTracks().some(track => track.readyState === "live" && track.enabled && !track.muted)) {
+        showToast("マイクの音声を取得できませんでした。マイクの許可と接続を確認してください");
+      }
+
       logCameraDiagnostics();
     } catch (error) {
       stopStreamTracks(openedStream);
@@ -282,14 +313,16 @@
       if (state.stream === openedStream) stopCamera();
       else if (elements.video.srcObject === openedStream) elements.video.srcObject = null;
       Q.invalidateCameraController();
-      elements.cameraStatus.textContent = error?.name === "NotAllowedError" ? "許可が必要" : "起動失敗";
+      elements.cameraStatus.textContent = permissionDenied(error) ? "許可が必要" : "起動失敗";
       elements.startButton.disabled = false;
       elements.shutterButton.disabled = true;
       elements.permissionPanel.hidden = false;
       setCameraInteractionReady(false);
       hideAdvancedCameraControls();
-      if (error?.name === "NotAllowedError") showCameraPermissionDialog();
+      if (permissionDenied(error)) showCameraPermissionDialog();
       else showToast(describeCameraError(error));
+    } finally {
+      if (cameraStartIsCurrent(generation)) state.cameraStartPending = false;
     }
   };
 
@@ -302,6 +335,7 @@
 
   window.addEventListener("pagehide", () => {
     state.cameraStartGeneration += 1;
+    state.cameraStartPending = false;
     window.clearTimeout(state.cameraRestartTimer);
     state.cameraRestartTimer = null;
   });

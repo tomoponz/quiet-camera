@@ -1,3 +1,4 @@
+import {createOwnedScratch,cleanupBrowserTest} from './browser-cleanup.mjs';
 // Actual MediaRecorder with canvas-only input, plus explicit fake-recorder
 // fault injection. Fresh profile/origin/database; no existing browser/USB use.
 import assert from 'node:assert/strict';
@@ -6,7 +7,7 @@ import http from 'node:http';import {spawn} from 'node:child_process';import {on
 const root=process.env.QC_REVIEW_HISTORY_ROOT||path.resolve(import.meta.dirname,'..');
 const output=process.env.QC_REVIEW_HISTORY_OUTPUT||path.join(root,'test-results/review-history-regression-browser');
 fs.mkdirSync(output,{recursive:true});
-const profile=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-camera-p1p5-isolated-'));
+const profile=createOwnedScratch('quiet-camera-p1p5-isolated-');
 const results=[],details={},targets=[],contexts=[],pages=[],exceptions=[],mediaAuditSnapshots=[];let socket,chrome,server,seq=0;const pending=new Map();let checks=0;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function save(){fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({root,profile,origin:details.origin,checks,results,details,exceptions,audit:{nativeMediaCalls:mediaAuditSnapshots.reduce((s,n)=>s+n,0)},permissionChanges:0,existingTrialOrUsbChanges:false},null,2))}
@@ -58,7 +59,7 @@ try{
   }catch(e){res.writeHead(404).end(String(e.message))}
  });server.listen(0,'127.0.0.1');await once(server,'listening');details.origin=`http://127.0.0.1:${server.address().port}`;
  chrome=spawn(process.env.CHROME_PATH||(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'google-chrome'),[...(process.env.QC_PC_HEADED==='1'?[]:['--headless=new']),'--remote-debugging-port=0',`--user-data-dir=${profile}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--autoplay-policy=no-user-gesture-required','--mute-audio','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
- let stderr='';const endpoint=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Isolated Chrome startup timeout: '+stderr)),20000);chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1])}});chrome.on('error',reject)});
+ let stderr='';const endpoint=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Isolated Chrome startup timeout: '+stderr)),20000);chrome.stderr.on('data',d=>{stderr+=d;const m=stderr.match(/DevTools listening on (ws:\/\/\S+)/);if(m){clearTimeout(timer);resolve(m[1])}});chrome.on('error',error=>{clearTimeout(timer);reject(error)})});
  socket=new WebSocket(endpoint);await once(socket,'open');socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails);if(!pending.has(m.id))return;const x=pending.get(m.id);pending.delete(m.id);clearTimeout(x.timer);m.error?x.reject(Error(JSON.stringify(m.error))):x.resolve(m.result)});
  details.browser=await command('Browser.getVersion');
  await test('P6 refresh preserves 240 loaded items, anchor and selection',async()=>{const p=await open(await context());await seed(p,250);await gallery(p);await p.eval('(async()=>{for(let i=0;i<3;i++)await refreshGallery({append:true})})()');check('loaded past old cap',await p.eval('state.gallery.length'),240);const pos=await p.eval(`(()=>{const b=document.querySelector('#gallerySheetBody');b.scrollTop=3500;return true})()`);await sleep(100);const before=await anchor(p);await p.eval(`state.selectedGalleryIds.add(state.gallery[220].id);QuietCameraGallery.update();refreshGallery()`);const after=await anchor(p);check('all loaded retained after refresh',await p.eval('state.gallery.length')>=240);check('same visible anchor',after.id,before.id);check('anchor offset stable',Math.abs(after.offset-before.offset)<=2);check('deep visible selection retained',await p.eval('state.selectedGalleryIds.size'),1)});
@@ -80,9 +81,10 @@ try{
 
  await test('P8 rotated desktop Japanese labels fit at enlarged font',async()=>{const p=await open(await context());await p.cdp('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false,screenWidth:1280,screenHeight:800,screenOrientation:{type:'landscapePrimary',angle:90}});await p.cdp('Emulation.setTouchEmulationEnabled',{enabled:false});await p.eval(`document.documentElement.style.fontSize='20px';QuietCameraOverlay.schedule()`);await sleep(150);check('desktop input and sizing active for Japanese label fixture',await p.eval(`getComputedStyle(document.querySelector('#cameraSurface')).getPropertyValue('--pc-controls-enabled').trim()==='1'`));const sizes=await p.eval(`[elements.photoModeButton,elements.videoModeButton].map(e=>{const s=e.querySelector('.device-upright'),r=document.createRange();r.selectNodeContents(s);return {text:r.getBoundingClientRect().width,available:s.getBoundingClientRect().width,max:getComputedStyle(s).maxWidth}})`);details.pcLabels=sizes;check('both Japanese labels fit their clipping spans',sizes.every(x=>x.text<=x.available+.5))});
 
+ check('no uncaught browser exceptions',exceptions,[]);
 }catch(e){details.fatal=e.stack;console.error(e);process.exitCode=1}
 finally{
- if(socket?.readyState===WebSocket.OPEN){for(const id of contexts)await command('Target.disposeBrowserContext',{browserContextId:id}).catch(()=>{});await command('Browser.close',{},undefined,3000).catch(()=>{});socket.close()}
- if(chrome&&!chrome.killed)chrome.kill();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));details.cleanup={temporaryServerClosed:true,temporaryBrowserCloseRequested:true,existingTrialOrUsbChanged:false};save();
+ details.cleanup=await cleanupBrowserTest({scratch:profile,chrome,socket,command,server,output,pending});save();
 }
+
 console.log(JSON.stringify({checks,passed:results.filter(x=>x.status==='passed').length,failed:results.filter(x=>x.status==='failed').length,output}));if(results.some(x=>x.status==='failed'))process.exitCode=1;
