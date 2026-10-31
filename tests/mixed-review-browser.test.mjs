@@ -58,6 +58,13 @@ const until=async(expression,timeout=8000)=>{const end=Date.now()+timeout;do{con
 const results=[];
 const check=(name,actual,expected)=>{assert.deepEqual(actual,expected,name);results.push({name,passed:true});};
 const shot=async name=>{const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(output,name),Buffer.from(r.data,'base64'));};
+const reviewReady=async()=>{
+ await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ await until('elements.reviewDialog.open&&!!state.selectedMedia&&!document.querySelector("#reviewPhotoNavigation").hasAttribute("aria-busy")');
+ await until('state.selectedMedia.kind!=="video"||(elements.reviewVideo.readyState>=2&&!elements.reviewVideo.seeking)||!!elements.reviewVideo.error');
+ const stable=await evaluate(`new Promise(resolve=>{let last='',matches=0,frames=0;const sample=()=>{const target=state.selectedMedia.kind==='video'?elements.reviewVideo:document.querySelector('#reviewViewer'),r=target.getBoundingClientRect(),key=JSON.stringify([r.x,r.y,r.width,r.height]);matches=key===last?matches+1:0;last=key;if(matches>=2)return resolve(true);if(++frames>=60)return resolve(false);requestAnimationFrame(sample)};requestAnimationFrame(sample)})`);
+ assert(stable,'review media dimensions must settle before gesture input');
+};
 const selected=()=>evaluate('state.selectedMedia?.id || null');
 const close=async()=>{await evaluate('if(elements.reviewDialog.open)elements.reviewDialog.close()');await until('!elements.reviewDialog.open && !state.selectedMedia');};
 const open=async id=>{
@@ -65,10 +72,12 @@ const open=async id=>{
  await evaluate(`(async()=>{selectMedia(await getStoredMedia(${JSON.stringify(id)}));elements.reviewDialog.showModal()})()`);
  await until('elements.reviewDialog.open && !!state.selectedMedia');
  if(await evaluate('state.selectedMedia.kind === "photo"'))await until('elements.reviewImage.complete && elements.reviewImage.naturalWidth > 0 && !document.querySelector("#reviewPhotoNavigation").hasAttribute("aria-busy")');
+ await reviewReady();
 };
 const metrics=async(w,h,touch=true)=>{await cdp('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:touch,screenWidth:w,screenHeight:h,screenOrientation:{type:w>h?'landscapePrimary':'portraitPrimary',angle:w>h?90:0}});await cdp('Emulation.setTouchEmulationEnabled',{enabled:touch});await sleep(40);};
 const swipe=async(dx,dy=0,{cancel=false,multi=false,area="content"}={})=>{
- const p=await evaluate(`(()=>{const video=state.selectedMedia.kind==='video',r=(video?elements.reviewVideo:document.querySelector('#reviewViewer')).getBoundingClientRect();return{x:r.x+r.width/2,y:video?r.y+r.height*(${area==='controls'?0.94:0.2}):r.y+r.height/2}})()`);
+ await reviewReady();
+ const p=await evaluate(`(()=>{const video=state.selectedMedia.kind==='video',r=(video?elements.reviewVideo:document.querySelector('#reviewViewer')).getBoundingClientRect();return{x:r.x+r.width/2,y:video?r.y+r.height*(${area==='controls'?0.94:0.2}):r.y+r.height/2,marker:performance.now(),scale:visualViewport?.scale||1,media:state.selectedMedia.id}})()`);
  const point=(x,y,id=1)=>({x,y,id,radiusX:3,radiusY:3,force:1});
  await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(p.x,p.y)]});
  if(multi)await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(p.x,p.y),point(p.x+30,p.y,2)]});
@@ -76,8 +85,13 @@ const swipe=async(dx,dy=0,{cancel=false,multi=false,area="content"}={})=>{
   const points=[point(p.x+dx*i/5,p.y+dy*i/5)];if(multi)points.push(point(p.x+30+dx*i/5,p.y+dy*i/5,2));
   await cdp('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:points});await sleep(20);
  }
- // End a drag without manufacturing a high-velocity fling in CDP's injector.
- await sleep(160);await cdp('Input.dispatchTouchEvent',{type:cancel?'touchCancel':'touchEnd',touchPoints:[]});await sleep(90);
+ // This viewer recognizes swipes only within 900 ms. Unlike the draggable
+ // sheets, it does not use release velocity; an idle hold only consumes that
+ // input budget and can turn a valid swipe into a long press under CPU load.
+ await cdp('Input.dispatchTouchEvent',{type:cancel?'touchCancel':'touchEnd',touchPoints:[]});
+ const timing=await evaluate(`(()=>{const events=__pointerLog.filter(event=>event.time>=${p.marker}),down=events.find(event=>event.type==='pointerdown'),up=events.find(event=>event.type==='pointerup'&&event.id===down?.id);const timing={media:${JSON.stringify(p.media)},elapsedMs:down&&up?up.time-down.time:null,scale:${p.scale},cancel:${cancel},multi:${multi},area:${JSON.stringify(area)}};__swipeTimings.push(timing);return timing})()`);
+ if(timing.elapsedMs!==null&&!cancel&&!multi&&area==='content'&&p.scale<=1.01)assert(timing.elapsedMs<900,'CDP swipe delivery exceeded the 900 ms gesture window: '+timing.elapsedMs);
+ await sleep(90);
 };
 let audit;
 try{
@@ -96,7 +110,7 @@ try{
   const create=URL.createObjectURL.bind(URL),revoke=URL.revokeObjectURL.bind(URL);
   URL.createObjectURL=b=>{const u=create(b);__audit.urls.add(u);__audit.created++;return u};
   URL.revokeObjectURL=u=>{if(__audit.urls.delete(u))__audit.revoked++;revoke(u)};
-  window.confirm=()=>true;window.__pointerLog=[];for(const type of ['pointerdown','pointermove','pointerup','pointercancel','gotpointercapture','lostpointercapture'])document.addEventListener(type,e=>{__pointerLog.push({type,id:e.pointerId,target:e.target.id,x:e.clientX,y:e.clientY});if(__pointerLog.length>180)__pointerLog.shift()},true);
+  window.confirm=()=>true;window.__pointerLog=[];window.__swipeTimings=[];for(const type of ['pointerdown','pointermove','pointerup','pointercancel','gotpointercapture','lostpointercapture'])document.addEventListener(type,e=>{__pointerLog.push({type,id:e.pointerId,target:e.target.id,x:e.clientX,y:e.clientY,time:performance.now(),scale:visualViewport?.scale});if(__pointerLog.length>180)__pointerLog.shift()},true);
  `});
  await cdp('Page.navigate',{url});
  await until('typeof selectMedia === "function" && typeof refreshGallery === "function"');
@@ -175,11 +189,11 @@ try{
  const beforeUrls=await evaluate('__audit.urls.size');for(let i=0;i<5;i++){await open('v-mid');await until('!!elements.reviewVideo.poster');await swipe(90);await until('state.selectedMedia.id==="p-mid"');await close()}await sleep(100);check('mixed transitions release viewer URLs',await evaluate('__audit.urls.size'),beforeUrls);
  await evaluate('(async()=>{for(const m of await listStoredMediaPage({limit:100}))if(m.id!=="v-mid")await deleteStoredMedia(m.id);await refreshGallery()})()');await open('v-mid');await until('document.querySelector("#reviewNewerPhoto").disabled&&document.querySelector("#reviewOlderPhoto").disabled');await swipe(-80);check('single video is stable',await selected(),'v-mid');await close();await evaluate('(async()=>{await deleteStoredMedia("v-mid");await refreshGallery()})()');check('empty history hides navigation',await evaluate('[state.selectedMedia,document.querySelector("#reviewPhotoNavigation").hidden]'),[null,true]);
  audit=await evaluate('({mediaCalls:__audit.mediaCalls,created:__audit.created,revoked:__audit.revoked,active:__audit.urls.size})');check('no camera or microphone access',audit.mediaCalls,0);check('no leaked object URLs',audit.active,0);check('no uncaught errors',exceptions.length,0);
- fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,checks:results.length,results,audit,exceptions,profile:scratch,origin:url,syntheticAudioVideo:true,realDeviceUsed:false},null,2));console.log(JSON.stringify({passed:true,checks:results.length,audit,output}));
+ fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,checks:results.length,results,audit,exceptions,swipeTimings:await evaluate('__swipeTimings'),profile:scratch,origin:url,syntheticAudioVideo:true,realDeviceUsed:false},null,2));console.log(JSON.stringify({passed:true,checks:results.length,audit,output}));
 
 }catch(error){
  await shot('failure.png').catch(()=>{});
- const stateAtFailure=await evaluate('({selectedId:state.selectedMedia?.id,dialogOpen:elements.reviewDialog.open,videoStatus:document.querySelector("#reviewVideoStatus").textContent,trace:window.__pointerLog,videoReady:elements.reviewVideo.readyState,videoError:elements.reviewVideo.error?.message,poster:!!elements.reviewVideo.poster,thumbnailCount:document.querySelectorAll(".video-thumbnail img").length})').catch(()=>null);
+ const stateAtFailure=await evaluate('({selectedId:state.selectedMedia?.id,dialogOpen:elements.reviewDialog.open,videoStatus:document.querySelector("#reviewVideoStatus").textContent,trace:window.__pointerLog,swipeTimings:window.__swipeTimings,scale:visualViewport?.scale,seeking:elements.reviewVideo.seeking,videoReady:elements.reviewVideo.readyState,videoError:elements.reviewVideo.error?.message,poster:!!elements.reviewVideo.poster,thumbnailCount:document.querySelectorAll(".video-thumbnail img").length})').catch(()=>null);
  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:String(error.stack),results,exceptions,stateAtFailure,audit:await evaluate('({mediaCalls:__audit.mediaCalls,mediaStacks:__audit.mediaStacks})').catch(()=>null)},null,2));
  throw error;
 }
