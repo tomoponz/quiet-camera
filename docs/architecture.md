@@ -10,7 +10,7 @@ Quiet CameraはHTML・CSS・JavaScriptで構成されたブラウザーアプリ
 
 HTMLはボタンや設定欄などの構造と意味、CSSはレイアウト・配色・縦横表示の見た目、JavaScriptは操作に応じた状態変更とAPI呼び出しを担当します。CSSで画面上の映像の見せ方を変える処理と、保存されるファイル自体の画素を加工する処理は別です。写真ではCanvasを使って表示枠の保存範囲を切り出し、動画では取得したストリームを `MediaRecorder` に渡して記録します。
 
-実装の根拠：[画面とスクリプトの読み込み順](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/index.html#L304-L325)、[写真の出力](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/photo.js#L183-L257)、[録画の開始](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L353-L465)。
+実装の根拠：[画面とスクリプトの読み込み順](../index.html)、[写真の出力](../assets/js/photo.js)、[録画の開始](../assets/js/video.js)。
 
 ## ファイルの配置
 
@@ -34,7 +34,7 @@ Service Workerは公開URL全体を扱えるようルートに残しています
 
 ## 主要ファイル
 
-以下のJavaScript・CSSへのリンクは、整理後の配置を指します。本文中の `9922270` への固定リンクは整理前に確認した処理の根拠として残しており、現在の配置とは区別します。
+本文中のソースへのリンクは、この文書と同じ版のファイルを指します。過去の確認記録と対象コミットは[検証記録](verification.md)に分けて記載しています。
 
 | ファイル | 主な役割 |
 | --- | --- |
@@ -59,7 +59,7 @@ Service Workerは公開URL全体を扱えるようルートに残しています
 
 各スクリプトはES Modulesとして分離されておらず、`elements`、`state`、`QuietCameraEnhancements` などをグローバル領域を介して共有するため、読み込み順に意味があります。`core.js` のカメラ操作と `ui.js` の履歴操作は、最初から対応する現行処理へ委譲する固定の入口です。後から関数やクリックハンドラーを差し替える方式は取り除きました。`camera-enhancements.js` が設定・履歴のコントローラーを接続し、最後に `bootstrap.js` がアプリ初期化を開始します。画面イベントは元の登録順を維持しているため、今後の変更でも読み込み順を確認してください。また、`camera-capture.js` は写真処理を接続する薄い窓口であり、撮影処理の本体は `photo.js` にあります。
 
-現在の入口：[カメラ操作](../assets/js/core.js)、[設定・履歴の接続](../assets/js/camera-enhancements.js)、[起動](../assets/js/bootstrap.js)。写真処理の根拠：[写真処理の接続](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/camera-capture.js#L1-L10)。
+現在の入口：[カメラ操作](../assets/js/core.js)、[設定・履歴の接続](../assets/js/camera-enhancements.js)、[起動](../assets/js/bootstrap.js)。写真処理の根拠：[写真処理の接続](../assets/js/camera-capture.js)。
 
 ## 撮影から保存まで
 
@@ -90,7 +90,7 @@ flowchart TD
 
 確定した動画の履歴記録は、保存済みの断片を参照する形で保持し、大きな `Blob` の二重保存を避けています。閲覧やファイル取り出しの際には、断片から一時的に `Blob` を組み立てるため、メモリを使います。保存確定前に中断したデータには復元経路がありますが、保存できたデータや読み込み確認の結果によっては復元できません。容量制限、復元、一時データの扱いは[データと権限](data-and-permissions.md)にまとめています。
 
-実装の根拠：[写真の取得と保存](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/photo.js#L157-L257)、[動画の読み込み確認](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L312-L349)、[動画の保存確定](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L509-L588)、[断片を使った読み出し](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L98-L104)、[履歴情報の確定](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L293-L310)。
+実装の根拠：[写真の取得と保存](../assets/js/photo.js)、[動画の読み込み確認](../assets/js/video.js)、[動画の保存確定](../assets/js/video.js)、[断片を使った読み出し](../assets/js/storage.js)、[履歴情報の確定](../assets/js/storage.js)。
 
 ## ブラウザーAPIとの分担
 
@@ -106,7 +106,7 @@ flowchart TD
 | `navigator.share` / ダウンロードリンク | 撮影ファイルのアプリ外への取り出し | 保存先や共有先での処理はブラウザー・OS側が担います。 |
 | Service Worker / Cache Storage | アプリのHTML・CSS・JavaScriptなどのキャッシュ | 撮影データを保存するIndexedDBとは別です。更新や通信の詳細は[データと権限](data-and-permissions.md)を参照してください。 |
 
-実装の根拠：[データベース定義](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L3-L7)、[設定の保存](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L370-L381)、[Web Locksによる排他](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/video.js#L38-L49)、[取り出し](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/ui.js#L10-L41)。
+実装の根拠：[データベース定義](../assets/js/storage.js)、[設定の保存](../assets/js/storage.js)、[Web Locksによる排他](../assets/js/video.js)、[取り出し](../assets/js/ui.js)。
 
 ## 読み始める順序
 

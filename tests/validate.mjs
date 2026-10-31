@@ -55,12 +55,12 @@ for (const file of ["index.html", "privacy.html", ...styles, ...scripts, "manife
 if (!serviceWorker.includes('const CACHE_PREFIX = "quiet-camera-"')) throw new Error("Cache cleanup must be scoped to Quiet Camera");
 if (!serviceWorker.includes("key.startsWith(CACHE_PREFIX)")) throw new Error("Service worker may delete caches belonging to other apps");
 if (!serviceWorker.includes("networkFirst(event.request)")) throw new Error("Static app assets must use network-first refresh behavior");
-const assetVersion = "20261031.1";
+const assetVersion = "20261031.2";
 for (const file of [...styles, ...scripts, "manifest.webmanifest"]) {
   if (!html.includes(`./${file}?v=${assetVersion}`)) throw new Error(`HTML asset version is stale: ${file}`);
   if (!serviceWorker.includes(`./${file}?v=${assetVersion}`)) throw new Error(`Service worker asset version is stale: ${file}`);
 }
-if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v41"')) throw new Error("Service worker cache version is stale");
+if (!serviceWorker.includes('const CACHE_NAME = "quiet-camera-shell-v42"')) throw new Error("Service worker cache version is stale");
 if (!privacyHtml.includes(`./assets/css/styles.css?v=${assetVersion}`)) throw new Error("Privacy page asset version is stale");
 for (const asset of ["sitemap.xml", "images/quiet-camera-og.png"]) {
   if (!fs.existsSync(path.join(root, asset))) throw new Error(`Missing SEO asset: ${asset}`);
@@ -159,7 +159,7 @@ for (const feature of ["targetTrackAspectRatio", "normalizedTrackAspectRatio", "
 }
 const coreJs = read("assets/js/core.js");
 if (!coreJs.includes('videoRatio: "16:9"') || !coreJs.includes('const stateKey = state.mode === "video" ? "videoRatio" : "ratio"')
-  || !coreJs.includes("if (state.mode === \"video\" && state.stream) await startCamera()")) {
+  || !coreJs.includes("if (state.mode === \"video\" && (state.stream || state.cameraStartPending || state.cameraTransitioning)) await startCamera()")) {
   throw new Error("Photo and video ratios must remain independent and restart video capture when changed");
 }
 
@@ -247,7 +247,8 @@ for (const dialogId of ["reviewDialog", "galleryDialog", "settingsDialog", "came
 }
 if (!html.includes("端末またはブラウザの設定で、このサイトのカメラ使用を許可してください")
   || !coreJs.includes("showCameraPermissionDialog")
-  || !deviceJs.includes('if (error?.name === "NotAllowedError") showCameraPermissionDialog()')
+  || !deviceJs.includes('["NotAllowedError", "SecurityError", "PermissionDeniedError"].includes(error?.name)')
+  || !deviceJs.includes('if (permissionDenied(error)) showCameraPermissionDialog()')
   || !read("assets/js/ui.js").includes("await startCamera()")) {
   throw new Error("Denied camera access must show browser-neutral guidance with a retry action");
 }
@@ -282,12 +283,15 @@ if (enhancementCss.includes(".live-camera-controls .range-setting")) {
 }
 
 const workflow = read(".github/workflows/validate.yml");
-if (!workflow.includes("node tests/check-syntax.mjs")) throw new Error("CI must run the recursive syntax check");
+const runAll = read("tests/run-all.mjs");
+if (!/^\s+run: node tests\/run-all\.mjs\s*$/m.test(workflow)
+  || !runAll.includes("await run(['tests/check-syntax.mjs'])")) throw new Error("The CI source job must run the recursive syntax check through the aggregate entry");
 if (JSON.stringify(applicationScripts(root)) !== JSON.stringify([...scripts, "service-worker.js"].sort())) {
   throw new Error("Every application script must be loaded in the checked order or be the root Service Worker");
 }
-if (!workflow.includes("tests/camera-controls.test.cjs") || !workflow.includes("tests/video-bitrate.test.cjs") || !workflow.includes("tests/service-worker.test.cjs") || !workflow.includes("tests/storage.test.cjs")) {
-  throw new Error("Regression tests are not wired into CI");
+if (!runAll.includes("f==='validate.mjs'||f.endsWith('.test.cjs')")) throw new Error("The CI source entry must discover every unit suite");
+for (const file of ["camera-controls.test.cjs", "video-bitrate.test.cjs", "service-worker.test.cjs", "storage.test.cjs", "recording-budget-matrix.test.cjs", "recording-safety.test.cjs", "media-audit.test.cjs", "browser-cleanup.test.cjs"]) {
+  if (!fs.existsSync(path.join(root,"tests",file))) throw new Error(`Missing required CI regression suite: ${file}`);
 }
 
 console.log(`Validated ${ids.size} DOM IDs, ${selectors.length} selector references, ${scripts.length} scripts, storage paging, unified controls, capture quality, video safety, and PWA cache isolation.`);

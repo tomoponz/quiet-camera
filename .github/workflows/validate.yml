@@ -16,26 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate references and PWA wiring
-        run: node tests/validate.mjs
-      - name: Camera constraint regression tests
-        run: node tests/camera-controls.test.cjs
-      - name: Camera ratio regression tests
-        run: node tests/camera-ratio.test.cjs
-      - name: Video bitrate regression tests
-        run: node tests/video-bitrate.test.cjs
-      - name: Service Worker failure-path tests
-        run: node tests/service-worker.test.cjs
-      - name: IndexedDB blocked-open tests
-        run: node tests/storage.test.cjs
-      - name: Settings sheet flick regression tests
-        run: node tests/settings-sheet-motion.test.cjs
-      - name: Device-relative layout regression tests
-        run: node tests/device-layout.test.cjs
-      - name: Gallery archive regression tests
-        run: node tests/gallery-batch.test.cjs
-      - name: Check every application and test script
-        run: node tests/check-syntax.mjs
+      - name: All source, unit, audit, and syntax checks
+        run: node tests/run-all.mjs
 
   browser-regressions:
     runs-on: ubuntu-latest
@@ -79,3 +61,39 @@ jobs:
             test-results/**/*.json
             test-results/**/*.png
           retention-days: 7
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [validate, browser-regressions]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: quiet-camera-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm the tested commit is still main
+        run: |
+          current_main=$(git ls-remote origin refs/heads/main | cut -f1)
+          test "$current_main" = "$GITHUB_SHA"
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Assemble the tested application
+        run: |
+          mkdir -p _site
+          cp index.html privacy.html service-worker.js manifest.webmanifest sitemap.xml LICENSE _site/
+          cp -R assets icons images _site/
+          touch _site/.nojekyll
+      - name: Upload tested Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

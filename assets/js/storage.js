@@ -94,7 +94,8 @@ function openDatabase() {
 }
 
 // Completed recordings can own their existing chunks, avoiding a duplicate
-// large IDB Blob allocation. The public storage API always returns full Blobs.
+// large IDB Blob allocation. Direct reads require a complete Blob; history can
+// retain a read-only placeholder for one damaged record without hiding the rest.
 async function hydrateStoredMedia(media) {
   if(!media?.backingRecordingId)return media;
   const chunks=await getRecordingChunks(media.backingRecordingId);
@@ -102,6 +103,16 @@ async function hydrateStoredMedia(media) {
   if(bytes!==media.backingSizeBytes || chunks.length!==media.backingChunkCount)throw new Error("保存動画のチャンクを読み取れません。データは削除していません");
   const blob=new Blob(chunks,{type:media.mimeType||"video/webm"});
   return {...media,blob,previewBlob:blob};
+}
+
+async function readStoredMediaForGallery(media) {
+  try { return await hydrateStoredMedia(media); }
+  catch (error) {
+    console.warn("Stored media is unavailable; its record and chunks are retained.", media?.id, error);
+    // This status exists only in memory. Never rewrite the stored record or its chunks.
+    return { ...media, blob: null, previewBlob: null, thumbnailBlob: null,
+      unavailable: true, unavailableReason: "データを読み込めません。元のデータは保持しています" };
+  }
 }
 
 async function deleteStoredMediaRecords(ids,{requireAll=false}={}) {
@@ -166,7 +177,7 @@ async function listStoredMediaPage({ offset = 0, limit = DEFAULT_MEDIA_PAGE_SIZE
   });
 
   await done;
-  return Promise.all(items.map(hydrateStoredMedia));
+  return Promise.all(items.map(readStoredMediaForGallery));
 }
 
 // Every record at or newer than minCreatedAt, newest first, read in one transaction.
@@ -188,7 +199,7 @@ async function listStoredMediaSince(minCreatedAt) {
     request.addEventListener("error", () => reject(request.error || new Error("撮影履歴を読み込めませんでした")), { once: true });
   });
   await done;
-  return Promise.all(items.map(hydrateStoredMedia));
+  return Promise.all(items.map(readStoredMediaForGallery));
 }
 
 async function listStoredMedia() {
@@ -204,13 +215,13 @@ async function countStoredMedia() {
   return Number(count) || 0;
 }
 
-async function getStoredMedia(id) {
+async function getStoredMedia(id, { allowUnavailable = false } = {}) {
   const database = await openDatabase();
   const transaction = database.transaction(MEDIA_STORE, "readonly");
   const done = transactionDone(transaction);
   const item = await requestToPromise(transaction.objectStore(MEDIA_STORE).get(id));
   await done;
-  return item ? hydrateStoredMedia(item) : null;
+  return item ? (allowUnavailable ? readStoredMediaForGallery(item) : hydrateStoredMedia(item)) : null;
 }
 
 // Match the gallery's createdAt/primary-key order without loading every Blob.

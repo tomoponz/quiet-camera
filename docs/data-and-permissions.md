@@ -2,9 +2,9 @@
 
 [READMEへ戻る](../README.md)
 
-2026年10月31日の構成整理後も、以下の操作・保存形式・制約を維持しています。固定コミットへのリンクは整理前の実装根拠です。現在のファイル配置は[構成と処理の流れ](architecture.md)を参照してください。
+現在のファイル配置は[構成と処理の流れ](architecture.md)を参照してください。ソースへのリンクは、この文書と同じ版の実装を指します。
 
-保存・通信の説明の基準にした整理前の公開版は `v2026.10.30.2`（コミット `9922270`）です。コードで確認した保存・通信の仕組みと、OSやブラウザーに委ねる動作を分けて記載しています。
+この文書は `v2026.10.31.2` の保存・通信・権限の扱いを説明しています。コードで確認した保存・通信の仕組みと、OSやブラウザーに委ねる動作を分けて記載しています。
 
 ## 保存される場所
 
@@ -18,6 +18,12 @@
 撮影直後の「保存」は、ブラウザー内の履歴へ記録する処理です。端末の写真アプリや任意のフォルダーへ自動で追加されるわけではありません。大切なデータは履歴から「端末に保存」または「共有」を使い、保存先で実際に開けることを確認してください。
 
 ブラウザー内の履歴は、利用中のブラウザー・プロファイルにおけるこのサイトの保存領域に属します。別のブラウザーや別端末への同期機能は実装していません。サイトデータの消去やブラウザーの容量整理によって失われる場合があります。永続保存の許可を要求する処理はありますが、許可やデータの保持を保証するものではありません。
+
+## 保存領域のアクセス境界
+
+IndexedDBとlocalStorageのアクセス境界は、プロトコル・ホスト名・ポートで決まるオリジンです。この公開版では `https://tomoponz.github.io` となり、`/quiet-camera/` というパスだけでは隔離されません。同じオリジンで動く別のGitHub Pagesプロジェクトのスクリプトからも、撮影データや設定へアクセスできます。別サイトとの自動同期処理を実装しているという意味ではなく、ブラウザーのアクセス制御の単位を説明しています。
+
+今回の修正では、既存データを引き続き利用できるよう、公開URL・DB名・DBの版・設定キーを維持しています。別オリジンへ移す場合は、既存データを取り出して移行する手順を別途用意する必要があります。仕組みは[MDNのIndexedDBの説明](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Basic_Terminology)を参照してください。
 
 ## 通信と共有
 
@@ -50,10 +56,10 @@
 
 ## 実装の参照先
 
-- 保存領域、設定、保持要求：[storage.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L3)
-- 設定復元時にマイクをOFFへ戻す処理：[storage.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/storage.js#L370)
-- 通信とオフライン処理：[service-worker.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/service-worker.js#L83)
-- 共有・ダウンロード・削除：[ui.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/ui.js#L10)、[gallery-selection.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/gallery-selection.js#L152)
-- 権限拒否時の処理：[camera-devices.js](https://github.com/tomoponz/quiet-camera/blob/9922270df2939db95a9835f9875e087e028b0420/camera-devices.js#L277)
+- 保存領域、設定、保持要求：[storage.js](../assets/js/storage.js)
+- 設定復元時にマイクをOFFへ戻す処理：[storage.js](../assets/js/storage.js)
+- 通信とオフライン処理：[service-worker.js](../service-worker.js)
+- 共有・ダウンロード・削除：[ui.js](../assets/js/ui.js)、[gallery-selection.js](../assets/js/gallery-selection.js)
+- 権限拒否時の処理：[camera-devices.js](../assets/js/camera-devices.js)
 
 [使い方](usage.md) · [制約と対応環境](limitations.md)

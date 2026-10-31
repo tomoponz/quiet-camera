@@ -130,6 +130,7 @@ const state = {
   selectedGalleryIds: new Set(),
   galleryObjectUrls: new Map(),
   busy: false,
+  cameraStartPending: false,
   recorder: null,
   recordingSessionId: null,
   recordingChunkIndex: 0,
@@ -361,7 +362,7 @@ function updateBasicCameraCapabilities() {
 
   const torchSupported = Boolean(state.capabilities.torch);
   elements.torchButton.hidden = false;
-  elements.torchButton.disabled = !torchSupported || Boolean(state.cameraTransitioning) || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
+  elements.torchButton.disabled = !torchSupported || state.busy || Boolean(state.cameraTransitioning) || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
   elements.torchButton.title = torchSupported ? "ライト" : "ライト: このカメラ／ブラウザでは利用できません";
   if (!torchSupported) {
     state.torchEnabled = false;
@@ -411,7 +412,7 @@ function updateModeUi() {
   elements.ratioButton.hidden = false;
   elements.shutterButton.classList.toggle("video", !photoMode);
   elements.shutterButton.setAttribute("aria-label", photoMode ? "写真を撮る" : "録画を開始する");
-  elements.permissionCopy.textContent = photoMode ? "写真はサーバーへ送信しません。マイクと位置情報は使用しません。" : "動画はサーバーへ送信しません。マイクはONにした場合だけ使用します。";
+  elements.permissionCopy.textContent = photoMode ? "写真を運営者へ自動送信しません。マイクと位置情報は使用しません。" : "動画を運営者へ自動送信しません。マイクはONにした場合だけ使用します。";
   syncMicrophoneStatus();
   syncRatioButton();
   applyStageRatio();
@@ -420,8 +421,8 @@ function updateModeUi() {
 
 async function setMode(mode) {
   if (state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive") || state.mode === mode) return;
-  const active = Boolean(state.stream) || Boolean(state.cameraTransitioning);
-  const reuse = window.QuietCameraEnhancements?.canReuseStreamForMode?.(mode) === true;
+  const active = Boolean(state.stream) || state.cameraStartPending || Boolean(state.cameraTransitioning);
+  const reuse = !state.cameraStartPending && window.QuietCameraEnhancements?.canReuseStreamForMode?.(mode) === true;
   if (active && !reuse) window.QuietCameraEnhancements?.beginPreviewTransition();
   state.mode = mode;
   updateModeUi();
@@ -430,7 +431,7 @@ async function setMode(mode) {
 }
 
 function cycleTimer() {
-  if (state.recorder?.state === "recording") return;
+  if (state.busy || state.recordingFinalizing || state.recorder?.state === "recording") return;
   const currentIndex = timerSequence.indexOf(state.timerSeconds);
   state.timerSeconds = timerSequence[(currentIndex + 1) % timerSequence.length];
   syncTimerButton();
@@ -452,7 +453,7 @@ async function cycleRatio() {
   syncRatioButton();
   applyStageRatio();
   persistCurrentSettings();
-  if (state.mode === "video" && state.stream) await startCamera();
+  if (state.mode === "video" && (state.stream || state.cameraStartPending || state.cameraTransitioning)) await startCamera();
 }
 
 function toggleGrid() {

@@ -9,31 +9,31 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="広告・ログイン不要。写真と動画を端末内だけで処理・保存するブラウザ無音カメラ。iPadOS・Android・PCの対応ブラウザで利用できます。">
+  <meta name="description" content="写真・動画をブラウザ内に保存するカメラアプリ。撮影データを自動送信しません。端末などが発する音は制御せず、無音は保証しません。">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ja_JP">
   <meta property="og:site_name" content="Quiet Camera">
-  <meta property="og:title" content="Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ">
-  <meta property="og:description" content="広告・ログイン不要。写真と動画を端末内だけで処理・保存する、プライバシー重視のブラウザカメラです。">
+  <meta property="og:title" content="Quiet Camera｜写真・動画を撮影するブラウザカメラ">
+  <meta property="og:description" content="写真・動画をブラウザ内に保存するカメラアプリ。撮影データを自動送信しません。端末などが発する音は制御せず、無音は保証しません。">
   <meta property="og:url" content="https://tomoponz.github.io/quiet-camera/">
   <meta property="og:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
   <meta property="og:image:width" content="1774">
   <meta property="og:image:height" content="887">
   <meta property="og:image:alt" content="端末内保存に対応したブラウザカメラQuiet Cameraのイメージ">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ">
-  <meta name="twitter:description" content="広告・ログイン不要。撮影データを端末内だけで処理・保存するブラウザカメラです。">
+  <meta name="twitter:title" content="Quiet Camera｜写真・動画を撮影するブラウザカメラ">
+  <meta name="twitter:description" content="写真・動画をブラウザ内に保存するカメラアプリ。撮影データを自動送信しません。端末などが発する音は制御せず、無音は保証しません。">
   <meta name="twitter:image" content="https://tomoponz.github.io/quiet-camera/images/quiet-camera-og.png">
   <link rel="canonical" href="https://tomoponz.github.io/quiet-camera/">
-  <title>Quiet Camera｜広告なし・端末内保存のブラウザ無音カメラ</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=20261031.1">
+  <title>Quiet Camera｜写真・動画を撮影するブラウザカメラ</title>
+  <link rel="manifest" href="./manifest.webmanifest?v=20261031.2">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=20261031.1">
-  <link rel="stylesheet" href="./assets/css/fullscreen.css?v=20261031.1">
-  <link rel="stylesheet" href="./assets/css/camera-enhancements.css?v=20261031.1">
-  <link rel="stylesheet" href="./assets/css/camera-overlay.css?v=20261031.1">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=20261031.2">
+  <link rel="stylesheet" href="./assets/css/fullscreen.css?v=20261031.2">
+  <link rel="stylesheet" href="./assets/css/camera-enhancements.css?v=20261031.2">
+  <link rel="stylesheet" href="./assets/css/camera-overlay.css?v=20261031.2">
 </head>
 <body>
   <main class="app" aria-label="Quiet Camera">
@@ -52,7 +52,7 @@
 
       <div id="permissionPanel" class="permission-panel" role="group" aria-labelledby="permissionTitle" aria-describedby="permissionCopy">
         <p id="permissionTitle" class="permission-title">カメラを起動します</p>
-        <p id="permissionCopy" class="permission-copy">写真と映像はサーバーへ送信しません。マイクは動画設定で有効にした場合だけ使用します。</p>
+        <p id="permissionCopy" class="permission-copy">撮影データを運営者へ自動送信しません。マイクは動画設定で有効にした場合だけ使用します。</p>
         <button id="startButton" class="primary-button" type="button">カメラを許可</button>
       </div>
 
@@ -268,6 +268,7 @@
     <ul>
       <li>写真・動画・音声はブラウザ内で処理され、自動送信されません。</li>
       <li>撮影結果はブラウザ保存領域へ保存されます。サイトデータの消去やブラウザによる容量整理で失われる場合があります。</li>
+      <li>保存領域のアクセス境界は配信元（https://tomoponz.github.io）です。同じ配信元の別ページのスクリプトも、この保存領域へアクセスできます。</li>
       <li>マイクは動画設定でONにした場合だけ許可を求めます。</li>
       <li>位置情報、連絡先、アカウント情報にはアクセスしません。</li>
       <li>ピント、ズーム、ライト、露出、動画形式は端末とブラウザの対応状況により異なります。</li>
@@ -301,30 +302,30 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="./assets/js/storage.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-ratio-model.js?v=20261031.1" defer></script>
-  <script src="./assets/js/core.js?v=20261031.1" defer></script>
-  <script src="./assets/js/photo.js?v=20261031.1" defer></script>
-  <script src="./assets/js/video-preview.js?v=20261031.1" defer></script>
-  <script src="./assets/js/video.js?v=20261031.1" defer></script>
-  <script src="./assets/js/ui.js?v=20261031.1" defer></script>
-  <script src="./assets/js/media-dialog-scroll.js?v=20261031.1" defer></script>
-  <script src="./assets/js/photo-review.js?v=20261031.1" defer></script>
-  <script src="./assets/js/fullscreen.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-enhancements-core.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-transition.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-devices.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-controls.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-capture.js?v=20261031.1" defer></script>
-  <script src="./assets/js/settings-sheet-motion.js?v=20261031.1" defer></script>
-  <script src="./assets/js/settings-sheet.js?v=20261031.1" defer></script>
-  <script src="./assets/js/gallery-loader.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-enhancements.js?v=20261031.1" defer></script>
-  <script src="./assets/js/gallery-batch.js?v=20261031.1" defer></script>
-  <script src="./assets/js/gallery-selection.js?v=20261031.1" defer></script>
-  <script src="./assets/js/history-sheet.js?v=20261031.1" defer></script>
-  <script src="./assets/js/device-layout-model.js?v=20261031.1" defer></script>
-  <script src="./assets/js/camera-overlay.js?v=20261031.1" defer></script>
-  <script src="./assets/js/bootstrap.js?v=20261031.1" defer></script>
+  <script src="./assets/js/storage.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-ratio-model.js?v=20261031.2" defer></script>
+  <script src="./assets/js/core.js?v=20261031.2" defer></script>
+  <script src="./assets/js/photo.js?v=20261031.2" defer></script>
+  <script src="./assets/js/video-preview.js?v=20261031.2" defer></script>
+  <script src="./assets/js/video.js?v=20261031.2" defer></script>
+  <script src="./assets/js/ui.js?v=20261031.2" defer></script>
+  <script src="./assets/js/media-dialog-scroll.js?v=20261031.2" defer></script>
+  <script src="./assets/js/photo-review.js?v=20261031.2" defer></script>
+  <script src="./assets/js/fullscreen.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-enhancements-core.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-transition.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-devices.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-controls.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-capture.js?v=20261031.2" defer></script>
+  <script src="./assets/js/settings-sheet-motion.js?v=20261031.2" defer></script>
+  <script src="./assets/js/settings-sheet.js?v=20261031.2" defer></script>
+  <script src="./assets/js/gallery-loader.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-enhancements.js?v=20261031.2" defer></script>
+  <script src="./assets/js/gallery-batch.js?v=20261031.2" defer></script>
+  <script src="./assets/js/gallery-selection.js?v=20261031.2" defer></script>
+  <script src="./assets/js/history-sheet.js?v=20261031.2" defer></script>
+  <script src="./assets/js/device-layout-model.js?v=20261031.2" defer></script>
+  <script src="./assets/js/camera-overlay.js?v=20261031.2" defer></script>
+  <script src="./assets/js/bootstrap.js?v=20261031.2" defer></script>
 </body>
 </html>

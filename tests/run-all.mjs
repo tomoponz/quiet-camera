@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
-import {readChildAudit,summarizeMediaAudits} from './media-audit.mjs';
+import {readChildAudit,regressionOutcome} from './media-audit.mjs';
 import {syntaxFiles} from './application-files.mjs';
 const root=path.resolve(import.meta.dirname,'..'),output=path.join(root,'test-results');
 fs.mkdirSync(output,{recursive:true});
@@ -19,6 +19,8 @@ await Promise.all(suites.map(file=>run(['tests/'+file])));
 const syntax=syntaxFiles(root);
 await run(['tests/check-syntax.mjs']);
 const browsers=[
+ ['camera-acquisition-browser.test.mjs','QC_CAMERA_ACQUISITION_OUTPUT','camera-acquisition'],
+ ['gallery-resilience-browser.test.mjs','QC_GALLERY_RESILIENCE_OUTPUT','gallery-resilience'],
  ['structure-upgrade-browser.test.mjs','QC_STRUCTURE_UPGRADE_OUTPUT','structure-upgrade'],
  ['mixed-review-browser.test.mjs','QC_MIXED_OUTPUT','mixed-review'],
  ['continuous-capture-browser.test.mjs','QC_CONTINUOUS_CAPTURE_OUTPUT','continuous-capture'],
@@ -45,6 +47,7 @@ if(process.argv.includes('--browser')&&results.every(r=>r.code===0)){
  let cursor=0;
  await Promise.all(Array.from({length:2},async()=>{while(cursor<browsers.length){const[file,key,folder]=browsers[cursor++];const startedAt=Date.now();const child=await run(['tests/'+file],{[key]:path.join(output,folder),QUIET_CAMERA_REVIEW_FIXTURES:path.join(root,'tests/fixtures'),QUIET_CAMERA_OVERLAY_ROOT:root,QUIET_CAMERA_OVERLAY_BASELINE:'0'});mediaAudits.push({suite:file,...readChildAudit({stdout:child.stdout,outputDir:path.join(output,folder),startedAt})});browserSuites++;}}));
 }
-const summary={passed:results.every(r=>r.code===0),recordedAt:new Date().toISOString(),sourceSuites:suites.length,syntaxChecks:syntax.length,browserSuites,...(()=>{const m=summarizeMediaAudits(mediaAudits);return {deviceMediaUsed:m.deviceMediaUsed,missingMediaAudit:m.missingAudit,mediaAudit:m.rows}})(),results};
+const outcome=regressionOutcome({results,browserRequested:process.argv.includes('--browser'),expectedSuites:browsers.map(([file])=>file),mediaAudits});
+const summary={passed:outcome.passed,recordedAt:new Date().toISOString(),sourceSuites:suites.length,syntaxChecks:syntax.length,browserSuites,deviceMediaUsed:outcome.media.deviceMediaUsed,missingMediaAudit:outcome.media.missingAudit,mediaAudit:outcome.media.rows,auditsPassed:outcome.auditsPassed,missingBrowserSuites:outcome.missingSuites,unexpectedBrowserSuites:outcome.unexpectedSuites,duplicateBrowserSuites:outcome.duplicateSuites,results};
 fs.writeFileSync(path.join(output,'aggregate.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify({passed:summary.passed,sourceSuites:summary.sourceSuites,syntaxChecks:summary.syntaxChecks,browserSuites}));if(!summary.passed)process.exitCode=1;

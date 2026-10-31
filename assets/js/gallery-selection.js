@@ -27,13 +27,15 @@
       if (selecting) button.setAttribute("aria-pressed", String(selected)); else button.removeAttribute("aria-pressed");
     }
     const chosen = [...state.selectedGalleryIds].map(id => records.get(id));
+    const unavailable = chosen.some(item => item?.unavailable);
     const empty = !chosen.length, mixed = chosen.some(item => item?.kind !== "photo" || !item.previewBlob || item.mimeType === "application/pdf");
-    share.disabled = save.disabled = elements.deleteSelectedButton.disabled = empty || Boolean(operation);
+    elements.deleteSelectedButton.disabled = empty || Boolean(operation);
+    share.disabled = save.disabled = empty || unavailable || Boolean(operation);
     elements.selectAllButton.disabled = !selecting || !state.gallery.length || Boolean(operation);
     elements.selectAllButton.setAttribute("aria-hidden", String(!selecting));
-    elements.exportPdfButton.disabled = empty || mixed || chosen.length > PDF_MAX_PAGES || Boolean(operation);
+    elements.exportPdfButton.disabled = empty || unavailable || mixed || chosen.length > PDF_MAX_PAGES || Boolean(operation);
     elements.exportPdfButton.title = mixed ? "PDFは画像の写真のみ選択してください（動画・既存PDFは含められません）" : `写真を${PDF_MAX_PAGES}枚までPDFにできます`;
-    if (!operation) message(mixed ? "PDFは写真のみ" : chosen.length > PDF_MAX_PAGES ? `PDFは一度に${PDF_MAX_PAGES}枚までです。` : "");
+    if (!operation) message(unavailable ? "読み込めない項目を含みます。保存・共有・PDF化はできません。正常な項目だけ選択してください。削除は可能です" : mixed ? "PDFは写真のみ" : chosen.length > PDF_MAX_PAGES ? `PDFは一度に${PDF_MAX_PAGES}枚までです。` : "");
     elements.selectAllButton.setAttribute("aria-label", state.gallery.length && state.gallery.every(item => state.selectedGalleryIds.has(item.id)) ? "表示中の選択を解除" : "表示中をすべて選択");
     elements.selectAllButton.textContent = state.gallery.length && state.gallery.every(item => state.selectedGalleryIds.has(item.id)) ? "表示中を解除" : "表示中を選択";
     elements.selectAllButton.title = "一覧に読み込み済みの項目" + (state.gallery.length && state.gallery.every(item => state.selectedGalleryIds.has(item.id)) ? "の選択を解除" : "をすべて選択");
@@ -113,14 +115,14 @@
     if (dialog.open) return;
     cancelPress(); suppress = null; operation?.abort(); operation = null; exit();
   });
-  async function selectedRecords(signal) {
+  async function selectedRecords(signal, { allowUnavailable = false } = {}) {
     // Never act on items that are not in the list (defensive; refresh keeps the loaded window).
     const listed = new Set(state.gallery.map(item => item.id)), offList = [...state.selectedGalleryIds].filter(id => !listed.has(id));
     if (offList.length) {
       offList.forEach(id => { state.selectedGalleryIds.delete(id); records.delete(id); }); update();
       throw new Error(`一覧に表示されていない${offList.length}件の選択を解除しました。選択内容を確認して、もう一度操作してください`);
     }
-    const ids = [...state.selectedGalleryIds], result = await Promise.all(ids.map(getStoredMedia));
+    const ids = [...state.selectedGalleryIds], result = await Promise.all(ids.map(id => getStoredMedia(id, { allowUnavailable: true })));
     signal?.throwIfAborted();
     // A serialized refresh can finish while IndexedDB reads are pending. Check
     // the current visible selection again immediately before external actions.
@@ -137,14 +139,17 @@
       await refreshGallery(); update();
       throw new Error("選択した項目が履歴から削除されています。選択内容を確認して、もう一度操作してください");
     }
+    if (!allowUnavailable && result.some(item => item.unavailable)) {
+      throw new Error("読み込めない項目を含むため処理できません。元のデータは保持しています。正常な項目だけ選択してください");
+    }
     return result.sort((a,b) => a.createdAt - b.createdAt || String(a.id).localeCompare(String(b.id)));
   }
-  async function run(task) {
+  async function run(task, options) {
     if (operation || !state.selectedGalleryIds.size) return;
     // Action buttons are disabled while the operation runs, which drops a keyboard user's focus to <body>.
     const trigger = document.activeElement;
     const controller = new AbortController(); operation = controller; update(); message("処理中…");
-    try { await task(await selectedRecords(controller.signal), controller.signal); }
+    try { await task(await selectedRecords(controller.signal, options), controller.signal); }
     catch (error) { if (error?.name !== "AbortError" && operation === controller) { console.error(error); const text = error?.name === "QuotaExceededError" ? "空き容量が不足しているため保存できませんでした。選択内容は残っています" : error.message || "処理できませんでした"; message(text); showToast(text); } }
     finally { if (operation === controller) { operation = null; const text = notice.textContent; update(); if (text && text !== "処理中…") message(text);
       if (dialog.open && !dialog.contains(document.activeElement)) (trigger && dialog.contains(trigger) && !trigger.disabled && !trigger.closest("[hidden]") ? trigger : entry).focus({ preventScroll: true }); } }
@@ -174,7 +179,7 @@
       if (signal.aborted) return; // A committed delete cannot be canceled; do not alter a newly reopened selection.
       state.selectedGalleryIds.clear(); await refreshGallery(); // renders the open list once, keeping its position
       message(`${items.length}件を削除しました`); showToast(`${items.length}件を削除しました`);
-    });
+    }, { allowUnavailable: true });
   }
   async function exportPdf() {
     return run(async (items, signal) => {
@@ -183,10 +188,10 @@
       const pages = [];
       for (const photo of items) { pages.push(await blobToJpegPage(photo.previewBlob)); signal.throwIfAborted(); }
       const blob = await jpegPagesToPdf(pages); signal.throwIfAborted();
-      await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: items[0].previewBlob, thumbnailBlob: items[0].thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${items.length}ページ · ${formatBytes(blob.size)}` });
+      const saved = await addMedia({ kind: "photo", origin: "pdf-export", blob, previewBlob: items[0].previewBlob, thumbnailBlob: items[0].thumbnailBlob || null, extension: "pdf", mimeType: "application/pdf", width: pages[0].width, height: pages[0].height, meta: `PDF · ${items.length}ページ · ${formatBytes(blob.size)}` });
       if (signal.aborted) return;
       state.selectedGalleryIds.clear(); update(); // addMedia already refreshed and rendered the open list
-      message(`${items.length}ページのPDFを履歴に作成しました`); showToast(`${items.length}ページのPDFを作成しました`);
+      message(saveResultMessage(`${items.length}ページのPDFを履歴に作成しました`, saved)); showToast(saveResultMessage(`${items.length}ページのPDFを作成しました`, saved));
     });
   }
   function announce(text) { if (!operation) message(text); showToast(text); }

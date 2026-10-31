@@ -1,3 +1,4 @@
+import {createOwnedScratch,cleanupBrowserTest} from './browser-cleanup.mjs';
 // Hermetic UI regression test: real app scripts/CSS, empty read-only storage fixture,
 // denied media permissions, and a fresh browser context/profile. No real camera,
 // microphone, saved settings, gallery, or Service Worker is used.
@@ -10,8 +11,10 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 
 const root = process.env.QC_LAYOUT_ROOT || path.resolve(import.meta.dirname, '..');
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'quiet-camera-layout-'));
-const output = process.env.QUIET_CAMERA_TEST_OUTPUT || scratch;
+const output = process.env.QUIET_CAMERA_TEST_OUTPUT || path.join(root,'test-results/layout');
+const scratch = createOwnedScratch('quiet-camera-layout-');
+let server,chrome,socket,cleanupCommand;const pending=new Map();
+try {
 fs.mkdirSync(output, { recursive: true });
 const fixture = `
   function loadSavedSettings(defaults) { return {...defaults}; }
@@ -24,7 +27,7 @@ const fixture = `
   async function putMedia() { window.__audit.mediaWrites++; throw new Error('Media writes forbidden in layout test'); }
   async function deleteStoredMedia() { window.__audit.mediaWrites++; throw new Error('Media writes forbidden in layout test'); }
 `;
-const server = http.createServer((req, res) => {
+server= http.createServer((req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   const file = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
@@ -37,18 +40,17 @@ server.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const url = `http://127.0.0.1:${server.address().port}/`;
 const executable = process.env.CHROME_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : 'google-chrome');
-const chrome = spawn(executable, ['--headless=new','--remote-debugging-port=0',`--user-data-dir=${path.join(scratch,'profile')}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'], { windowsHide: true, stdio: ['ignore','ignore','pipe'] });
+chrome= spawn(executable, ['--headless=new','--remote-debugging-port=0',`--user-data-dir=${path.join(scratch,'profile')}`,'--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--mute-audio','about:blank'], { windowsHide: true, stdio: ['ignore','ignore','pipe'] });
 let stderr = '';
 const endpoint = await new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error(`Chrome startup timeout: ${stderr}`)), 15000);
   chrome.stderr.on('data', data => { stderr += data; const match = stderr.match(/DevTools listening on (ws:\/\/\S+)/); if(match) {clearTimeout(timer);resolve(match[1]);} });
-  chrome.on('error', reject);
+  chrome.on('error', error=>{clearTimeout(timer);reject(error)});
   chrome.on('exit', code => {clearTimeout(timer);reject(new Error(`Chrome exited ${code}: ${stderr}`));});
 });
-const socket = new WebSocket(endpoint);
+socket= new WebSocket(endpoint);
 await once(socket,'open');
 let seq = 1;
-const pending = new Map();
 const exceptions = [];
 socket.addEventListener('message', event => {
   const data = JSON.parse(event.data);
@@ -66,6 +68,7 @@ function command(method, params = {}, sessionId) {
     socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));
   });
 }
+cleanupCommand=command;
 const cases = [];
 const interactions = [];
 let finalAudit;
@@ -244,6 +247,9 @@ try {
 } catch(error) {
   fs.writeFileSync(path.join(output,'layout-test-results.json'),JSON.stringify({passed:false,error:String(error),cases,interactions,exceptions},null,2));
   throw error;
+}
+} catch(error) {
+ fs.writeFileSync(path.join(output,'harness-failure.json'),JSON.stringify({passed:false,error:error.stack},null,2));console.error(error);process.exitCode=1;
 } finally {
-  await command('Browser.close').catch(()=>chrome.kill());socket.close();server.close();server.closeAllConnections?.();chrome.kill();chrome.stderr?.destroy();chrome.unref();
+ await cleanupBrowserTest({scratch,chrome,socket,command:cleanupCommand,server,output,pending});
 }

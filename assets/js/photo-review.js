@@ -88,7 +88,7 @@
       if (token !== epoch || !reviewOpen() || state.selectedMedia.id !== current.id) return;
       if (media && ["photo", "video"].includes(media.kind)) selectMedia(media);
     } catch (error) {
-      if (token === epoch && reviewOpen()) showToast("撮影結果を読み込めませんでした");
+      if (token === epoch && reviewOpen()) showToast("この撮影結果を読み込めません。データは保持しています。履歴から別の項目を開いてください");
       console.warn("Photo navigation failed.", error);
     } finally {
       if (token === epoch) { navigating = false; scheduleRefresh(); }

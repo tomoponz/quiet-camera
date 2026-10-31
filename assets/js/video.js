@@ -246,7 +246,7 @@ function updateRecordingClock() {
     state.recordingMemoryWarningShown = true;
     showToast("録画サイズが大きくなっています。確定時にメモリを使用するため、必要なら一度停止してください");
   }
-  if (state.recordingDurationMs >= getRecordingLimitMs()) {
+  if (state.recordingDurationMs >= (state.recordingLimitMs ?? getRecordingLimitMs())) {
     showToast("設定した録画時間に達したため停止します");
     stopRecording();
     return;
@@ -355,6 +355,10 @@ async function startRecording() {
     showToast("このブラウザは動画録画に対応していません");
     return;
   }
+  if (state.cameraStartPending || state.cameraTransitioning) {
+    showToast("カメラの準備が終わってから録画してください");
+    return;
+  }
   if (!recordingStartAllowed({
     hasStream: Boolean(state.stream),
     busy: state.busy,
@@ -364,18 +368,49 @@ async function startRecording() {
     if (state.recordingFinalizing) showToast("前の動画を保存しています");
     return;
   }
+  // Keep one immutable user choice throughout countdown, storage preparation,
+  // recorder construction and its later metadata. UI values are not the source
+  // of truth for the tracks actually handed to MediaRecorder.
+  const recordingSettings = {
+    source: state.stream,
+    generation: state.cameraStartGeneration,
+    audio: microphoneEnabled(),
+    timerSeconds: state.timerSeconds,
+    limitMs: getRecordingLimitMs(),
+    videoBitsPerSecond: getVideoBitsPerSecond(),
+  };
+  const usableTrack = track => track.readyState === "live" && track.enabled && !track.muted;
+  const checkRecordingSource = () => {
+    if (state.stream !== recordingSettings.source || state.cameraStartGeneration !== recordingSettings.generation
+      || !recordingSettings.source.getVideoTracks().some(usableTrack)) {
+      throw new Error("カメラの接続が変わりました。映像を確認して、もう一度録画してください");
+    }
+    if (recordingSettings.audio && !recordingSettings.source.getAudioTracks().some(usableTrack)) {
+      throw new Error("マイクの音声を取得できません。マイクの許可と接続を確認して、もう一度録画してください");
+    }
+  };
   state.busy = true;
+  setControlsDisabled(true);
+  elements.gridButton.disabled = true;
+  elements.shutterButton.disabled = true;
   elements.galleryButton.disabled = true; // countdown: history cannot open (B3)
   let sessionPrepared = false;
 
   try {
-    if (state.timerSeconds > 0) await runCountdown(state.timerSeconds);
+    checkRecordingSource();
+    if (recordingSettings.timerSeconds > 0) await runCountdown(recordingSettings.timerSeconds);
     await prepareRecordingBudget();
+    checkRecordingSource();
+    const recordingStream = new MediaStream([
+      ...recordingSettings.source.getVideoTracks().filter(usableTrack),
+      ...(recordingSettings.audio ? recordingSettings.source.getAudioTracks().filter(usableTrack) : []),
+    ]);
+    const audioEnabled = recordingStream.getAudioTracks().length > 0;
     const mimeType = pickRecorderMimeType();
     const settings = state.videoTrack?.getSettings?.() ?? {};
     const options = {
-      videoBitsPerSecond: getVideoBitsPerSecond(),
-      audioBitsPerSecond: microphoneEnabled() ? 128_000 : undefined,
+      videoBitsPerSecond: recordingSettings.videoBitsPerSecond,
+      audioBitsPerSecond: audioEnabled ? 128_000 : undefined,
     };
     if (mimeType) options.mimeType = mimeType;
     let usedPreferredOptions = true;
@@ -383,17 +418,17 @@ async function startRecording() {
     state.recordingKeyFrameIntervalRequestedMs = 0;
     if (mimeType.includes("mp4")) {
       try {
-        state.recorder = new MediaRecorder(state.stream, {...options, videoKeyFrameIntervalDuration: RECORDING_LIMITS.mp4KeyFrameIntervalMs});
+        state.recorder = new MediaRecorder(recordingStream, {...options, videoKeyFrameIntervalDuration: RECORDING_LIMITS.mp4KeyFrameIntervalMs});
         // This is a request; accepting the dictionary does not prove cadence.
         state.recordingKeyFrameIntervalRequestedMs = RECORDING_LIMITS.mp4KeyFrameIntervalMs;
       } catch (error) { console.warn("Keyframe request unsupported; retrying standard options.", error); }
     }
     try {
-      if (!state.recorder) state.recorder = new MediaRecorder(state.stream, options);
+      if (!state.recorder) state.recorder = new MediaRecorder(recordingStream, options);
     } catch (preferredError) {
       console.warn("Preferred recording options failed; using browser defaults.", preferredError);
       usedPreferredOptions = false;
-      state.recorder = new MediaRecorder(state.stream);
+      state.recorder = new MediaRecorder(recordingStream);
     }
 
     state.recordingSessionId = makeId("recording-session");
@@ -413,13 +448,15 @@ async function startRecording() {
     state.recordingRuntimeError = null;
     state.recordingChunkMimeType = "";
     state.cancelRecording = false;
-    state.recordingAudioEnabled = microphoneEnabled();
+    state.recordingAudioEnabled = audioEnabled;
+    state.recordingLimitMs = recordingSettings.limitMs;
     state.recordingMimeType = state.recorder.mimeType || (usedPreferredOptions ? mimeType : "");
     state.recordingExtension = state.recordingMimeType.includes("mp4") ? "mp4" : "webm";
     state.recordingResolution = settings.width && settings.height ? `${settings.width}×${settings.height}` : "解像度不明";
 
     await putRecordingSession(recordingSessionRecord());
     sessionPrepared = true;
+    checkRecordingSource();
 
     state.recorder.addEventListener("dataavailable", (event) => {
       if (!event.data || event.data.size <= 0) return;
@@ -479,7 +516,8 @@ async function startRecording() {
       elements.gridButton.disabled = false;
       elements.shutterButton.disabled = !state.stream;
     }
-    showToast(error?.message || "録画を開始できませんでした");
+    showToast(/[ぁ-んァ-ヶ一-龠]/.test(error?.message || "")
+      ? error.message : "録画を開始できませんでした。カメラとマイクの状態を確認して、もう一度お試しください");
   } finally {
     state.busy = false;
     if (!state.recordingFinalizing) elements.galleryButton.disabled = false;
@@ -573,7 +611,7 @@ async function finalizeRecording() {
     const actualResolution = metadata.width && metadata.height
       ? `${metadata.width}×${metadata.height}`
       : recording.resolution;
-    await addMedia({
+    const saved = await addMedia({
       id: recording.mediaId,
       createdAt: recording.createdAt,
       kind: "video",
@@ -589,7 +627,7 @@ async function finalizeRecording() {
       audio: recording.audio,
       meta: `${extension.toUpperCase()} · ${formatDuration(recording.durationMs)} · ${actualResolution} · ${formatBytes(blob.size)} · ${recording.audio ? "音声あり" : "音声なし"}`,
     }, {recordingSessionId:sessionId});
-    showToast("動画を保存しました");
+    showToast(saveResultMessage("動画を保存しました", saved));
   } catch (error) {
     if(error?.code === "VERIFICATION_DEFERRED"){
       try {const latest=await getRecordingSession(sessionId);if(latest)await putRecordingSession({...latest,status:"verification-pending",recoveryAttempts:0});}catch{}
@@ -613,8 +651,7 @@ async function finalizeRecording() {
     elements.galleryButton.setAttribute("aria-label", "撮影履歴を見る");
     elements.galleryPlaceholder.textContent = "履歴";
     await releaseRecordingLock();
-    try { await refreshGallery(); }
-    catch (error) { console.error("Gallery refresh after recording failed.", error); }
+    await refreshGalleryAfterSave();
     if (document.visibilityState === "visible" && deferredRecordingVerifications.size) {
       window.setTimeout(() => retryDeferredRecordingVerification().catch(error => console.warn("Deferred recording data retained.", error)), 0);
     }
