@@ -1,7 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const root=process.env.QC_RECORDING_TEST_ROOT||path.resolve(__dirname,'..');
 const output=process.env.QC_RECORDING_TEST_OUTPUT||path.join(root,'test-results/recording-safety-unit.json');
-const code=fs.readFileSync(path.join(root,'video.js'),'utf8');
+const code=fs.readFileSync(path.join(root,'assets/js/video.js'),'utf8');
 const results=[];let checks=0;
 function box(type,payload=new Uint8Array(),size=null){const a=new Uint8Array(8+payload.length),v=new DataView(a.buffer);v.setUint32(0,size??a.length);a.set(Buffer.from(type),4);a.set(payload,8);return a}
 const init=new Blob([box('ftyp',Buffer.from('isom0000')),box('moov')],{type:'video/mp4'});

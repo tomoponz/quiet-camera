@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const M = require('../settings-sheet-motion.js');
+const M = require('../assets/js/settings-sheet-motion.js');
 let checks = 0;
 const check = (name, actual, expected) => { assert.deepEqual(actual, expected, name); checks++; };
 const line = (speed, step = 10, end = 100) => Array.from({ length: Math.floor(end / step) + 1 }, (_, i) => ({ time: i * step, x: 50, y: 100 + i * step * speed }));

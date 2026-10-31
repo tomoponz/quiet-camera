@@ -34,35 +34,8 @@ jobs:
         run: node tests/device-layout.test.cjs
       - name: Gallery archive regression tests
         run: node tests/gallery-batch.test.cjs
-      - name: Check every application script
-        run: |
-          for file in \
-            storage.js \
-            camera-ratio-model.js \
-            core.js \
-            photo.js \
-            video-preview.js \
-            video.js \
-            ui.js \
-            media-dialog-scroll.js \
-            photo-review.js \
-            fullscreen.js \
-            camera-enhancements-core.js \
-            camera-transition.js \
-            camera-devices.js \
-            camera-controls.js \
-            camera-capture.js \
-            settings-sheet-motion.js \
-            camera-enhancements.js \
-            gallery-batch.js \
-            gallery-selection.js \
-            history-sheet.js \
-            device-layout-model.js \
-            camera-overlay.js \
-            service-worker.js; do
-            echo "Checking $file"
-            node --check "$file"
-          done
+      - name: Check every application and test script
+        run: node tests/check-syntax.mjs
 
   browser-regressions:
     runs-on: ubuntu-latest
@@ -71,6 +44,8 @@ jobs:
       QC_PC_HEADED: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22

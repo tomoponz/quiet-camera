@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const model = require("../camera-controls.js");
+const model = require("../assets/js/camera-controls.js");
 
 const capabilities = {
   focusMode: ["continuous", "single-shot", "manual"],

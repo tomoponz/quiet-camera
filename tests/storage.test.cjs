@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(path.resolve(__dirname, "..", "storage.js"), "utf8");
+const source = fs.readFileSync(path.resolve(__dirname, "..", "assets/js/storage.js"), "utf8");
 
 class FakeRequest {
   constructor() {

@@ -1,5 +1,5 @@
 "use strict";
-const assert=require('node:assert/strict'),m=require('../device-layout-model.js');let checks=0;
+const assert=require('node:assert/strict'),m=require('../assets/js/device-layout-model.js');let checks=0;
 function check(actual,expected){assert.deepEqual(actual,expected);checks++;}
 const phone=(type,angle,width=800,height=393)=>m.rotation({type,angle,width,height});
 check(phone('portrait-primary',0,393,800),0);check(phone('landscape-primary',90),1);check(phone('landscape-secondary',270),3);check(phone('portrait-secondary',180,393,800),2);
