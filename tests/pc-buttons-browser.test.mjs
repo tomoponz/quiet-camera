@@ -132,7 +132,7 @@ try{
       check('desktop preview remains full aspect-fit area inside viewport '+key,m.stage.width>0&&m.stage.height>0&&m.stage.x>=-.5&&m.stage.y>=-.5&&m.stage.right<=spec.w+.5&&m.stage.bottom<=spec.h+.5&&m.page.every(v=>v===0),true);
       if(!immersive){for(const id of ['galleryButton','settingsButton','shutterButton','switchButton','timerButton','ratioButton','gridButton','fullscreenButton']){const e=all.find(e=>e.id===id),before=b.buttons.find(e=>e.id===id);check('intended control is enlarged '+key+'-'+id,e.width>before.width+5&&e.height>before.height+5,true);}}
       check('utility icon scales with its target '+key,m.buttons.find(e=>e.id==='fullscreenButton').svg.width>=27.9,true);
-      if(mode==='video')check('MIC remains explicit on two lines '+key,await evaluate('(()=>{const a=document.querySelector(".microphone-status-current"),b=document.querySelector(".microphone-state-line"),r=a.getBoundingClientRect(),s=b.getBoundingClientRect();return a.textContent.trim()==="現在"&&b.textContent.includes("MIC")&&s.top>=r.bottom-1})()'),true);
+      if(mode==='video')check('MIC remains explicit on two lines '+key,await evaluate('(()=>{const a=document.querySelector(".microphone-status-current"),b=document.querySelector(".microphone-state-line"),r=a.getBoundingClientRect(),s=b.getBoundingClientRect();return a.textContent.trim()==="音声なし"&&b.textContent.replace(/\\s/g,"")==="MICOFF"&&s.top>=r.bottom-1})()'),true);
      }
     }
     if(spec.w===1280&&spec.h===800&&!spec.font&&!spec.angle&&mode==='video'&&!immersive)await shot((baseline?'before':'after')+'-pc-video.png');

@@ -103,7 +103,7 @@ try{
    await evaluate('elements.videoModeButton.click()');await sleep(220);const m=await geometry();
    check('selector stays centered and stable '+w+' '+font+' '+ratio,[m.selector.x,m.selector.y,m.selector.width,m.selector.height],[p.selector.x,p.selector.y,p.selector.width,p.selector.height]);
    check('MIC stays at physical right of selector without collision '+w+' '+ratio,(w<h?m.mic.x>=m.selector.right+5:m.mic.bottom<=m.selector.y-5)&&m.mic.right<=w-7,true);
-   check('MIC uses two visible lines '+w+' '+ratio,await evaluate('document.querySelector(".microphone-status-current").textContent==="現在"&&document.querySelector(".microphone-state-line").textContent.replace(/\\s/g,"")==="MICOFF"&&getComputedStyle(document.querySelector(".microphone-status-current")).display==="block"'),true);
+   check('MIC uses two visible lines '+w+' '+ratio,await evaluate('document.querySelector(".microphone-status-current").textContent==="音声なし"&&document.querySelector(".microphone-state-line").textContent.replace(/\\s/g,"")==="MICOFF"&&getComputedStyle(document.querySelector(".microphone-status-current")).display==="block"'),true);
    check('whole preview fits without page scroll '+w+' '+ratio,m.stage.x>=-.5&&m.stage.y>=-.5&&m.stage.right<=w+.5&&m.stage.bottom<=h+.5&&m.pageX===0&&m.pageY===0,true);
    const [a,b]=ratio.split(':').map(Number),expected=w<h?b/a:a/b;
    check('selected frame ratio is preserved '+w+' '+ratio,Math.abs(m.stage.width/m.stage.height-expected)<.002,true);
