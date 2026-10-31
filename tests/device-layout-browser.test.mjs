@@ -111,6 +111,11 @@ try{
  // Narrow display, larger text, and both sides' safe insets.
  for(const[w,h,q,font]of[[320,600,0,16],[600,320,1,16],[600,320,3,16],[320,600,0,32],[600,320,1,32],[600,320,3,32]]){
   await orientation(w,h,q);await evaluate(`document.documentElement.style.fontSize='${font}px';state.videoRatio='16:9';updateModeUi()`);await sleep(120);const g=await geometry();check('narrow and large-text targets '+q+' '+font,Object.values(g.buttons).every(b=>b.width>=43.9&&b.height>=43.9&&b.x>=-.5&&b.y>=-.5&&b.right<=w+.5&&b.bottom<=h+.5&&b.hit),true);check('narrow MIC exact two lines '+q+' '+font,await evaluate('(()=>{const a=document.querySelector(".microphone-status-current").getBoundingClientRect(),b=document.querySelector(".microphone-state-line").getBoundingClientRect();return a.bottom<=b.top+1&&a.x>=0&&b.x>=0&&a.right<=innerWidth&&b.right<=innerWidth})()'),true);
+  for(const[mic,pending,label]of[['off',false,'音声なし'],['on',true,'準備中'],['on',false,'現在']]){
+   await evaluate(`elements.microphoneSelect.value='${mic}';state.cameraStartPending=${pending};syncMicrophoneStatus()`);await sleep(80);
+   check('MIC label and state stay inside their button '+q+' '+font+' '+label,await evaluate(`(()=>{const button=elements.microphoneStatusButton.getBoundingClientRect(),a=document.querySelector('.microphone-status-current'),b=document.querySelector('.microphone-state-line'),ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();return a.textContent==='${label}'&&ar.bottom<=br.top+1&&[ar,br].every(r=>r.left>=button.left+.5&&r.right<=button.right-.5&&r.top>=button.top+.5&&r.bottom<=button.bottom-.5)})()`),true);
+  }
+  await evaluate('elements.microphoneSelect.value="off";state.cameraStartPending=false;syncMicrophoneStatus()');await sleep(80);
  }
  await evaluate('document.documentElement.style.fontSize="16px"');
  for(const q of [0,1,3]){
