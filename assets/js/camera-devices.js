@@ -3,6 +3,8 @@
 (() => {
   const Q = window.QuietCameraEnhancements;
   const stageControls = document.querySelector(".camera-top-controls");
+  let pendingMicrophoneRequest = null;
+  let cameraWasOpened = false;
 
   function recordingLocksCamera() {
     return state.busy || Boolean(state.recorder && state.recorder.state !== "inactive") || Boolean(state.recordingFinalizing);
@@ -75,6 +77,28 @@
       : false;
   }
 
+  async function requestCameraStream(constraints, generation) {
+    if (!constraints.audio && (cameraWasOpened || !pendingMicrophoneRequest)) return navigator.mediaDevices.getUserMedia(constraints);
+    // Mode switches may supersede a request while the native permission UI is
+    // still open. Wait for that answer, propagating refusal without a new prompt.
+    while (pendingMicrophoneRequest) {
+      try { await pendingMicrophoneRequest; }
+      catch (error) {
+        if (constraints.audio) throw error;
+        const sharedError = new Error(error.message, { cause: error });
+        sharedError.name = error.name;
+        sharedError.fromPendingMicrophone = true;
+        throw sharedError;
+      }
+      if (!cameraStartIsCurrent(generation)) throw new DOMException("カメラの切替は取り消されました", "AbortError");
+    }
+    if (!constraints.audio) return navigator.mediaDevices.getUserMedia(constraints);
+    const request = navigator.mediaDevices.getUserMedia(constraints);
+    pendingMicrophoneRequest = request;
+    try { return await request; }
+    finally { if (pendingMicrophoneRequest === request) pendingMicrophoneRequest = null; }
+  }
+
   async function openCameraStream(generation) {
     const candidates = [
       { audio: buildAudioConstraints(), video: buildVideoConstraints() },
@@ -90,7 +114,7 @@
     for (const constraints of candidates) {
       if (!cameraStartIsCurrent(generation)) throw new DOMException("カメラの切替は取り消されました", "AbortError");
       try {
-        return await navigator.mediaDevices.getUserMedia(constraints);
+        return await requestCameraStream(constraints, generation);
       } catch (error) {
         if (!cameraStartIsCurrent(generation)) throw error;
         // Permission refusal is not a constraint mismatch. Never prompt again
@@ -177,7 +201,7 @@
     });
   }
 
-  Q.enhancedStartCamera = async () => {
+  Q.enhancedStartCamera = async ({ silentPermissionFailure = false } = {}) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       elements.cameraStatus.textContent = "非対応";
       showToast("このブラウザではカメラを利用できません");
@@ -189,11 +213,16 @@
       return;
     }
     if (recordingLocksCamera()) return;
+    prepareVideoMicrophone();
     const moveFocusToShutter = document.activeElement === elements.startButton;
+    const hadLiveCamera = cameraWasOpened;
+    const requestedMicrophone = microphoneEnabled();
+    const microphoneChoiceRevision = state.microphoneChoiceRevision;
 
     const generation = state.cameraStartGeneration + 1;
     state.cameraStartGeneration = generation;
     state.cameraStartPending = true;
+    syncMicrophoneStatus();
     const requestedSettings = cameraRequestSettings();
 
     if (state.stream || state.cameraTransitioning) Q.beginPreviewTransition();
@@ -206,8 +235,10 @@
     setCameraInteractionReady(false);
 
     let openedStream = null;
+    let acquisitionFailed = true;
     try {
       openedStream = await openCameraStream(generation);
+      acquisitionFailed = false;
       // getUserMedia has no abort signal; an obsolete result must be stopped explicitly.
       if (!cameraStartIsCurrent(generation)) {
         stopStreamTracks(openedStream);
@@ -240,6 +271,7 @@
       Q.endPreviewTransition();
       [state.videoTrack] = openedStream.getVideoTracks();
       if (!state.videoTrack) throw new Error("映像トラックを取得できませんでした");
+      cameraWasOpened = true;
 
       const settings = Q.currentVideoSettings();
       state.currentDeviceId = settings.deviceId || "";
@@ -307,7 +339,17 @@
       logCameraDiagnostics();
     } catch (error) {
       stopStreamTracks(openedStream);
-      if (!cameraStartIsCurrent(generation)) return;
+      if (!cameraStartIsCurrent(generation)) {
+        // A photo-only request can finish while the old microphone prompt is
+        // still open. Remember that refusal unless a newer explicit choice won.
+        if (acquisitionFailed && requestedMicrophone && permissionDenied(error) && state.mode === "photo"
+          && microphoneChoiceRevision === state.microphoneChoiceRevision && state.microphoneDecision === "on") {
+          state.microphoneDecision = "denied";
+          elements.microphoneSelect.value = "off";
+          syncMicrophoneStatus();
+        }
+        return;
+      }
       Q.endPreviewTransition();
       console.error(error);
       if (state.stream === openedStream) stopCamera();
@@ -319,10 +361,27 @@
       elements.permissionPanel.hidden = false;
       setCameraInteractionReady(false);
       hideAdvancedCameraControls();
-      if (permissionDenied(error)) showCameraPermissionDialog();
+      const microphoneUnavailable = acquisitionFailed
+        && (permissionDenied(error) || ["NotFoundError", "NotReadableError"].includes(error?.name));
+      if ((requestedMicrophone || error.fromPendingMicrophone) && microphoneUnavailable
+        && microphoneChoiceRevision === state.microphoneChoiceRevision && (microphoneEnabled() || error.fromPendingMicrophone)) {
+        // A refusal is session state, not the user's persistent manual OFF choice.
+        state.microphoneDecision = "denied";
+        elements.microphoneSelect.value = "off";
+        syncMicrophoneStatus();
+        // Only restore video automatically when it was already in use. An initial
+        // combined refusal must not immediately trigger a second native prompt.
+        if (hadLiveCamera) return await Q.enhancedStartCamera({ silentPermissionFailure: true });
+        elements.cameraStatus.textContent = "音声なし・カメラ未接続";
+        showToast("マイクを利用できません。音声なしで撮影するにはカメラを起動してください");
+      }
+      else if (permissionDenied(error) && !requestedMicrophone && !error.fromPendingMicrophone && !silentPermissionFailure) showCameraPermissionDialog();
       else showToast(describeCameraError(error));
     } finally {
-      if (cameraStartIsCurrent(generation)) state.cameraStartPending = false;
+      if (cameraStartIsCurrent(generation)) {
+        state.cameraStartPending = false;
+        syncMicrophoneStatus();
+      }
     }
   };
 

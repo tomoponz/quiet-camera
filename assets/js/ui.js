@@ -406,15 +406,17 @@ async function installApp() {
   finally { state.deferredInstallPrompt = null; elements.installButton.hidden = true; }
 }
 
-function bindSetting(control, { restartCamera = false, updateStatus = false } = {}) {
+function bindSetting(control, { restartCamera = false, updateStatus = false, onChange } = {}) {
   control.addEventListener("change", async (event) => {
     if (control.disabled || state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive")) {
       event.stopImmediatePropagation();
       return;
     }
+    onChange?.();
     persistCurrentSettings();
     if (updateStatus) updateMediaStatus();
-    if (restartCamera && (state.stream || state.cameraStartPending || state.cameraTransitioning)) await startCamera();
+    const microphoneRequested = control === elements.microphoneSelect && microphoneEnabled();
+    if (restartCamera && (state.stream || state.cameraStartPending || state.cameraTransitioning || microphoneRequested)) await startCamera();
   });
 }
 
@@ -541,8 +543,7 @@ elements.galleryDialog.addEventListener("close", () => { if (!elements.galleryDi
 bindSetting(elements.photoFormatSelect, { updateStatus: true });
 bindSetting(elements.photoQualitySelect);
 bindSetting(elements.selfieMirrorSelect);
-bindSetting(elements.microphoneSelect, { restartCamera: true });
-elements.microphoneSelect.addEventListener("change", syncMicrophoneStatus);
+bindSetting(elements.microphoneSelect, { restartCamera: true, onChange: rememberMicrophoneChoice });
 bindSetting(elements.videoResolutionSelect, { restartCamera: true });
 bindSetting(elements.videoFrameRateSelect, { restartCamera: true });
 bindSetting(elements.videoQualitySelect);

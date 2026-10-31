@@ -77,8 +77,8 @@ function webmTracks(buffer) {
 }
 const ready=()=>until('!!state.stream&&!state.cameraStartPending&&!state.cameraTransitioning&&elements.video.readyState>=2&&!elements.shutterButton.disabled',14000);
 const change=async(id,value)=>evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
-const reset=async({mode='video',mic='off',ratio='16:9'}={})=>{
-  await evaluate(`state.cameraStartGeneration++;state.cameraStartPending=false;stopCamera();QuietCameraEnhancements.endPreviewTransition();if(elements.cameraPermissionDialog.open)elements.cameraPermissionDialog.close();if(elements.settingsDialog.open)elements.settingsDialog.close();state.mode=${JSON.stringify(mode)};state.videoRatio=${JSON.stringify(ratio)};state.timerSeconds=0;state.busy=false;state.selectedDeviceId='synthetic-rear';state.facingMode='environment';elements.microphoneSelect.value=${JSON.stringify(mic)};elements.videoResolutionSelect.value='720';elements.videoFrameRateSelect.value='30';elements.videoQualitySelect.value='economy';elements.recordingLimitSelect.value='10';window.__delay=80;window.__failure=null;window.__failures=[];window.__dropAudio=false;window.__forceRecorderFailure=false;setControlsDisabled(false);updateModeUi();`);
+const reset=async({mode='video',mic='off',ratio='16:9',preference=mic==='on'?'auto':'off',decision=mic==='on'?'on':'off'}={})=>{
+  await evaluate(`state.cameraStartGeneration++;state.cameraStartPending=false;stopCamera();QuietCameraEnhancements.endPreviewTransition();if(elements.cameraPermissionDialog.open)elements.cameraPermissionDialog.close();if(elements.settingsDialog.open)elements.settingsDialog.close();state.mode=${JSON.stringify(mode)};state.microphonePreference=${JSON.stringify(preference)};state.microphoneDecision=${JSON.stringify(decision)};state.videoRatio=${JSON.stringify(ratio)};state.timerSeconds=0;state.busy=false;state.selectedDeviceId='synthetic-rear';state.facingMode='environment';elements.microphoneSelect.value=${JSON.stringify(mic)};elements.videoResolutionSelect.value='720';elements.videoFrameRateSelect.value='30';elements.videoQualitySelect.value='economy';elements.recordingLimitSelect.value='10';window.__delay=80;window.__failure=null;window.__audioFailure=null;window.__failures=[];window.__dropAudio=false;window.__forceRecorderFailure=false;setControlsDisabled(false);updateModeUi();`);
 };
 const begin=async()=>evaluate('void(window.__start=startCamera())');
 const recordings=[];
@@ -107,6 +107,8 @@ async function record(name,audioExpected){
   recordings.push({name,size:bytes.length,tracks,audio:saved.audio,meta:saved.meta,progress});
 }
 let audit;
+const documentAudits=[];
+const closeSynthetic=()=>evaluate('(async()=>{for(const stream of window.__streams||[])stream.getTracks().forEach(track=>track.stop());for(const timer of window.__paintTimers||[])clearInterval(timer);await window.__audio?.close()})()');
 try{
   const {browserContextId}=await command('Target.createBrowserContext');
   for(const name of ['camera','microphone'])await command('Browser.setPermission',{permission:{name},setting:'denied',browserContextId});
@@ -115,7 +117,7 @@ try{
   await cdp('Page.enable');await cdp('Runtime.enable');
   await cdp('Emulation.setDeviceMetricsOverride',{width:393,height:800,deviceScaleFactor:1,mobile:true});
   await cdp('Page.addScriptToEvaluateOnNewDocument',{source:`
-    window.__audit={nativeMediaCalls:0,requests:[],recorders:[],toasts:[]};
+    window.__audit={nativeMediaCalls:0,requests:[],recorders:[],toasts:[],dialogs:[]};
     window.__forbiddenNativeMedia=()=>{__audit.nativeMediaCalls++;throw new Error('Physical media is forbidden in this test')};
     Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:options=>window.__openSynthetic(options),enumerateDevices:async()=>[{kind:'videoinput',deviceId:'synthetic-rear',label:'Synthetic rear'},{kind:'videoinput',deviceId:'synthetic-front',label:'Synthetic front'}],getSupportedConstraints:()=>({aspectRatio:true,resizeMode:true}),addEventListener(){}}});
     Object.defineProperty(navigator,'serviceWorker',{value:{register:async()=>({waiting:null,addEventListener(){}}),addEventListener(){}}});
@@ -124,12 +126,13 @@ try{
   `});
   await cdp('Page.navigate',{url});
   await until('document.readyState==="complete"&&!!window.QuietCameraEnhancements?.enhancedStartCamera');
-  await evaluate(`(async()=>{
+  check('page load never acquires camera or microphone',await evaluate('__audit.requests.length'),0);
+  const installSynthetic=()=>evaluate(`(async()=>{
     window.__streams=[];window.__paintTimers=[];window.__audio=new AudioContext();await __audio.resume();
     window.__newAudioTrack=()=>{const oscillator=__audio.createOscillator(),destination=__audio.createMediaStreamDestination();oscillator.frequency.value=440;oscillator.connect(destination);oscillator.start();return destination.stream.getAudioTracks()[0]};
     window.__openSynthetic=async options=>{
       const request={options:structuredClone(options),delay:__delay};__audit.requests.push(request);
-      const failure=__failures.shift()||__failure,dropAudio=__dropAudio;
+      const failure=__failures.shift()||__failure||(options.audio&&__audioFailure),dropAudio=__dropAudio;
       await new Promise(r=>setTimeout(r,request.delay));if(failure)throw new DOMException('Synthetic media failure',failure);
       const c=document.createElement('canvas');c.width=640;c.height=Math.round(c.width/(options.video.aspectRatio?.exact||16/9));
       const x=c.getContext('2d');request.frames=0;const paint=()=>{x.fillStyle='#346d65';x.fillRect(0,0,c.width,c.height);x.fillStyle='#fff';x.fillRect(20,20,90,70);x.fillStyle='#efb347';x.fillRect((request.frames++%40)*12,110,10,30)};paint();
@@ -140,8 +143,21 @@ try{
       __streams.push(stream);request.audio=stream.getAudioTracks().length;request.completed=true;return stream;
     };
     const originalToast=showToast;showToast=message=>{__audit.toasts.push(message);originalToast(message)};
+    const originalPermissionDialog=showCameraPermissionDialog;showCameraPermissionDialog=()=>{__audit.dialogs.push('cameraPermission');return originalPermissionDialog()};
     pickRecorderMimeType=()=>{if(!MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus'))throw new Error('Required synthetic WebM support unavailable');return 'video/webm;codecs=vp8,opus'};
   })()`);
+  await installSynthetic();
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});
+  await evaluate('window.__delay=350;window.__audioFailure="NotAllowedError";window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length;void(window.__video=setMode("video"))');await sleep(40);
+  await evaluate('void(window.__photo=setMode("photo"))');await evaluate('Promise.all([__video,__photo])');
+  check('photo selected during first microphone prompt shares its refusal',await evaluate('[__audit.requests.length-__requestCount,__audit.dialogs.length-__dialogCount,state.mode,state.stream,elements.startButton.disabled,state.cameraStartPending]'),[1,0,'photo',null,false,false]);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});
+  await evaluate('window.__audioFailure="NotAllowedError";window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length;setMode("video")');
+  check('first camera and microphone denial does not automatically request twice',await evaluate('[__audit.requests.length-__requestCount,__audit.dialogs.length-__dialogCount,state.stream,elements.startButton.disabled,elements.permissionPanel.hidden]'),[1,0,null,false,false]);
+  await evaluate('window.__requestCount=__audit.requests.length;startCamera()');await ready();
+  check('explicit camera retry after denial requests video only',await evaluate('__audit.requests.slice(__requestCount).map(r=>!!r.options.audio)'),[false]);
 
   for(const selected of ['', 'synthetic-rear']){
     await reset();await evaluate(`state.selectedDeviceId=${JSON.stringify(selected)};window.__failure='NotAllowedError';window.__before=__audit.requests.length`);
@@ -208,8 +224,94 @@ try{
 
   await reset();await evaluate('window.__failures=["OverconstrainedError"];window.__requestCount=__audit.requests.length');await begin();await ready();
   check('constraint failure still uses fallback',await evaluate('__audit.requests.length-__requestCount>=2'),true);
+
+  await reset({mic:'on'});
+  await evaluate('window.__requestCount=__audit.requests.length;window.__oldStreams=__streams.length;const originalPlay=elements.video.play;elements.video.play=function(){this.play=originalPlay;return Promise.reject(new DOMException("Synthetic playback failure","NotAllowedError"))};startCamera()');
+  check('playback failure does not turn granted microphone into a refusal',await evaluate('[__audit.requests.length-__requestCount,state.microphoneDecision,elements.microphoneSelect.value,state.stream,elements.shutterButton.disabled,__streams.slice(__oldStreams).every(s=>s.getTracks().every(t=>t.readyState==="ended"))]'),[1,'on','on',null,true,true]);
+  await evaluate('startCamera()');await ready();
+  check('retry after playback failure retains requested audio',await evaluate('[!!__audit.requests.at(-1).options.audio,state.stream.getAudioTracks().length,elements.microphoneSelect.value]'),[true,1,'on']);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__failures=["OverconstrainedError","NotAllowedError"];window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length;setMode("video")');await ready();
+  check('device fallback followed by microphone refusal adds no application dialog',await evaluate('[__audit.requests.slice(__requestCount).map(r=>!!r.options.audio),__audit.dialogs.length-__dialogCount,state.microphoneDecision,elements.microphoneSelect.value,state.stream.getAudioTracks().length]'),[[true,true,false],0,'denied','off',0]);
+
+  // A legacy microphone:"off" value was written for every old session. Only
+  // the new explicit preference may suppress the first video-mode request.
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});
+  await evaluate('window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length');await begin();await ready();
+  check('photo startup requests video without audio',await evaluate('__audit.requests.slice(__requestCount).map(r=>!!r.options.audio)'),[false]);
+  await evaluate('window.__requestCount=__audit.requests.length;window.__delay=350;void(window.__mode=setMode("video"))');await sleep(45);
+  check('video selection requests audio before recording',await evaluate('[__audit.requests.length-__requestCount,!!__audit.requests.at(-1).options.audio,!!state.cameraStartPending]'),[1,true,true]);
+  await evaluate('window.__recorderCount=__audit.recorders.length;startRecording()');
+  check('permission acquisition cannot start an early recorder',await evaluate('[elements.shutterButton.disabled,__audit.recorders.length-__recorderCount]'),[true,0]);
+  await evaluate('__mode');await ready();
+  check('granted video entry exposes live microphone',await evaluate('[elements.microphoneSelect.value,state.stream.getAudioTracks().filter(t=>t.readyState==="live").length]'),['on',1]);
+  check('video entry adds no application confirmation',await evaluate('__audit.dialogs.length-__dialogCount'),0);
+  await record('video-entry-with-audio',true);
+
+  await change('microphoneSelect','off');await ready();
+  check('manual OFF is recorded as an explicit preference',await evaluate('[state.microphonePreference,JSON.parse(localStorage.getItem("quiet-camera-settings-v3")).microphonePreference]'),['off','off']);
+  await evaluate('window.__requestCount=__audit.requests.length;setMode("photo")');await ready();await evaluate('setMode("video")');await ready();
+  check('manual OFF survives photo and video switches',await evaluate('[elements.microphoneSelect.value,__audit.requests.slice(__requestCount).every(r=>r.options.audio===false),state.stream.getAudioTracks().length]'),['off',true,0]);
+  await change('microphoneSelect','on');await ready();
+  check('manual ON removes only the explicit OFF preference',await evaluate('(()=>{const s=JSON.parse(localStorage.getItem("quiet-camera-settings-v3"));return[state.microphonePreference,Object.hasOwn(s,"microphonePreference"),s.microphone,s.videoResolution,s.recordingLimit]})()'),['auto',false,'off','720','10']);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__audioFailure="NotAllowedError";window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length;setMode("video")');await ready();
+  check('microphone denial restores an already allowed camera once',await evaluate('__audit.requests.slice(__requestCount).map(r=>!!r.options.audio)'),[true,false]);
+  check('microphone denial uses audio-free video and truthful status',await evaluate('[state.mode,state.microphoneDecision,elements.microphoneSelect.value,state.stream.getAudioTracks().length,document.querySelector(".microphone-status-current").textContent.trim()]'),['video','denied','off',0,'音声なし']);
+  check('microphone denial adds no application permission dialog',await evaluate('[__audit.dialogs.length-__dialogCount,elements.cameraPermissionDialog.open]'),[0,false]);
+  await record('video-entry-microphone-denied',false);
+  await evaluate('window.__requestCount=__audit.requests.length;setMode("photo")');await ready();await evaluate('setMode("video")');await ready();
+  check('denial does not request microphone again on mode cycles',await evaluate('__audit.requests.slice(__requestCount).every(r=>r.options.audio===false)'),true);
+  await evaluate('window.__audioFailure=null;window.__requestCount=__audit.requests.length');await change('microphoneSelect','on');await ready();
+  check('explicit ON retries after a denial',await evaluate('[__audit.requests.length-__requestCount,!!__audit.requests.at(-1).options.audio,elements.microphoneSelect.value,state.stream.getAudioTracks().length,state.microphonePreference]'),[1,true,'on',1,'auto']);
+
+
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__delay=350;window.__oldStreams=__streams.length;void(window.__mode=setMode("video"))');await sleep(45);await evaluate('void(window.__photo=setMode("photo"))');await evaluate('Promise.all([__mode,__photo])');await ready();
+  check('returning to photo during permission acquisition stops obsolete audio',await evaluate('[state.mode,state.stream.getAudioTracks().length,__streams.slice(__oldStreams,-1).every(s=>s.getTracks().every(t=>t.readyState==="ended"))]'),['photo',0,true]);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__delay=350;window.__audioFailure="NotAllowedError";window.__requestCount=__audit.requests.length;void(window.__video=setMode("video"))');await sleep(40);
+  await evaluate('window.__delay=60;void(window.__photo=setMode("photo"))');await evaluate('__photo');await ready();await evaluate('__video');
+  check('late microphone refusal is remembered after photo has resumed',await evaluate('[state.mode,state.microphoneDecision,elements.microphoneSelect.value,state.stream.getAudioTracks().length]'),['photo','denied','off',0]);
+  await evaluate('setMode("video")');await ready();
+  check('late refusal suppresses the next automatic microphone request',await evaluate('__audit.requests.slice(__requestCount).filter(r=>r.options.audio).length'),1);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__delay=350;window.__oldStreams=__streams.length;void(window.__mode=setMode("video"))');await sleep(45);await change('microphoneSelect','off');await evaluate('__mode');await ready();await sleep(420);
+  check('manual OFF wins over a late initial microphone grant',await evaluate('[state.microphonePreference,elements.microphoneSelect.value,state.stream.getAudioTracks().length,__streams.slice(__oldStreams,-1).every(s=>s.getTracks().every(t=>t.readyState==="ended"))]'),['off','off',0,true]);
+
+  await reset({mode:'photo',preference:'auto',decision:'unresolved'});await begin();await ready();
+  await evaluate('window.__delay=350;window.__audioFailure="NotAllowedError";window.__requestCount=__audit.requests.length;window.__dialogCount=__audit.dialogs.length;void(window.__first=setMode("video"))');await sleep(40);
+  await evaluate('void(window.__photo=setMode("photo"))');await sleep(40);await evaluate('void(window.__last=setMode("video"))');await evaluate('Promise.all([__first,__photo,__last])');await ready();
+  check('rapid video photo video shares the pending microphone refusal',await evaluate('[__audit.requests.slice(__requestCount).filter(r=>r.options.audio).length,state.mode,state.microphoneDecision,elements.microphoneSelect.value,state.stream.getAudioTracks().length,__audit.dialogs.length-__dialogCount]'),[1,'video','denied','off',0,0]);
+  check('rapid refused mode changes leave only the active camera stream',await evaluate('__streams.filter(s=>s.getTracks().some(t=>t.readyState==="live")).length'),1);
+  await change('microphoneSelect','off');await ready();
+
+  const reloadApplication=async()=>{
+    documentAudits.push(await evaluate('__audit'));await closeSynthetic();
+    await cdp('Page.navigate',{url:url+'?reload='+documentAudits.length});
+    await until('document.readyState==="complete"&&!!window.QuietCameraEnhancements?.enhancedStartCamera');
+    check('reload does not access camera or microphone '+documentAudits.length,await evaluate('__audit.requests.length'),0);
+    await installSynthetic();
+    await evaluate('window.__delay=80;window.__failure=null;window.__audioFailure=null;window.__failures=[];window.__dropAudio=false');
+  };
+  await evaluate('window.__savedBeforeReload=localStorage.getItem("quiet-camera-settings-v3")');
+  const savedManualOff=await evaluate('__savedBeforeReload');await reloadApplication();
+  check('manual OFF survives a real page reload without rewriting settings',await evaluate('[state.microphonePreference,elements.microphoneSelect.value,localStorage.getItem("quiet-camera-settings-v3")]'),['off','off',savedManualOff]);
+  await evaluate('window.__requestCount=__audit.requests.length;startCamera()');await ready();
+  check('restored manual OFF starts video without audio',await evaluate('__audit.requests.slice(__requestCount).map(r=>!!r.options.audio)'),[false]);
+  await evaluate('localStorage.setItem("quiet-camera-settings-v3",JSON.stringify({mode:"video",microphone:"off"}))');await reloadApplication();
+  check('legacy automatic OFF does not mean manual OFF',await evaluate('[state.mode,state.microphonePreference,state.microphoneDecision,elements.microphoneSelect.value]'),['video','auto','unresolved','off']);
+  await evaluate('window.__requestCount=__audit.requests.length;startCamera()');await ready();
+  check('restored video requests audio only after explicit camera start',await evaluate('[__audit.requests.length-__requestCount,!!__audit.requests.at(-1).options.audio,state.stream.getAudioTracks().length]'),[1,true,1]);
+
   await shot('ready-after-regressions.png');
-  audit=await evaluate('__audit');check('real camera microphone never called',audit.nativeMediaCalls,0);check('no uncaught browser exceptions',exceptions.length,0);
+  documentAudits.push(await evaluate('__audit'));
+  audit={nativeMediaCalls:documentAudits.reduce((n,a)=>n+a.nativeMediaCalls,0),requests:documentAudits.flatMap(a=>a.requests),recorders:documentAudits.flatMap(a=>a.recorders),toasts:documentAudits.flatMap(a=>a.toasts),dialogs:documentAudits.flatMap(a=>a.dialogs),documents:documentAudits.length};check('real camera microphone never called',audit.nativeMediaCalls,0);check('no uncaught browser exceptions',exceptions.length,0);
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,checks:results,recordings,audit,exceptions,limits:['PC Chromium, generated canvas video and WebAudio oscillator only.','Physical camera/microphone permissions denied. No device or OS share/save UI exercised.','Encoded WebM tracks are inspected independently of application metadata.']},null,2));
   console.log(JSON.stringify({passed:true,checks:results.length,output,audit:{nativeMediaCalls:audit.nativeMediaCalls}}));
 }catch(error){
@@ -217,6 +319,6 @@ try{
   audit=await evaluate('window.__audit').catch(()=>null);
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:false,error:error.stack,checks:results,recordings,audit,exceptions,debug:await evaluate('({pending:state.cameraStartPending,busy:state.busy,mode:state.mode,mic:elements.microphoneSelect.value,ratio:state.videoRatio,status:elements.cameraStatus.textContent,toast:elements.toast.textContent,recorderState:state.recorder?.state,recordingChunks:state.recordingChunkIndex,recordingBytes:state.recordingBytes,emittedBytes:state.recordingEmittedBytes,audioContext:window.__audio?.state,visibility:document.visibilityState})').catch(()=>null)},null,2));console.error(error);process.exitCode=1;
 }finally{
-  await evaluate('(async()=>{for(const stream of window.__streams||[])stream.getTracks().forEach(track=>track.stop());for(const timer of window.__paintTimers||[])clearInterval(timer);await window.__audio?.close()})()').catch(()=>{});
+  await closeSynthetic().catch(()=>{});
   await cleanupBrowserTest({scratch,chrome,socket,command,server,output,pending});
 }

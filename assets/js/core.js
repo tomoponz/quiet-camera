@@ -12,6 +12,7 @@ const elements = {
   videoSupportStatus: document.querySelector("#videoSupportStatus"),
   microphoneStatusButton: document.querySelector("#microphoneStatusButton"),
   microphoneStatusText: document.querySelector("#microphoneStatusText"),
+  microphoneStatusCurrent: document.querySelector(".microphone-status-current"),
   microphoneStatusDetail: document.querySelector("#microphoneStatusDetail"),
   switchButton: document.querySelector("#switchButton"),
   timerButton: document.querySelector("#timerButton"),
@@ -117,6 +118,10 @@ const state = {
   facingMode: "environment",
   isFrontCamera: false,
   mode: savedSettings.mode === "video" ? "video" : "photo",
+  // Older versions always saved microphone: "off", even without a user choice.
+  microphonePreference: savedSettings.microphonePreference === "off" ? "off" : "auto",
+  microphoneDecision: "unresolved",
+  microphoneChoiceRevision: 0,
   timerSeconds: Number(savedSettings.timer) || 0,
   ratio: ["4:3", "1:1", "16:9"].includes(savedSettings.ratio) ? savedSettings.ratio : "16:9",
   videoRatio: ["4:3", "1:1", "16:9"].includes(savedSettings.videoRatio) ? savedSettings.videoRatio : "16:9",
@@ -201,6 +206,20 @@ function formatDuration(milliseconds) {
 function mediaRecorderSupported() { return typeof MediaRecorder !== "undefined"; }
 function microphoneEnabled() { return state.mode === "video" && elements.microphoneSelect.value === "on"; }
 
+function prepareVideoMicrophone(mode = state.mode) {
+  if (mode !== "video" || state.microphoneDecision !== "unresolved") return;
+  state.microphoneDecision = state.microphonePreference === "off" ? "off" : "on";
+  elements.microphoneSelect.value = state.microphoneDecision;
+}
+
+function rememberMicrophoneChoice() {
+  state.microphoneChoiceRevision += 1;
+  const enabled = elements.microphoneSelect.value === "on";
+  state.microphonePreference = enabled ? "auto" : "off";
+  state.microphoneDecision = enabled ? "on" : "off";
+  syncMicrophoneStatus();
+}
+
 function syncMicrophoneStatus() {
   const videoMode = state.mode === "video";
   const enabled = elements.microphoneSelect.value === "on";
@@ -208,9 +227,12 @@ function syncMicrophoneStatus() {
   elements.microphoneStatusButton.classList.toggle("microphone-on", enabled);
   elements.microphoneStatusButton.classList.toggle("microphone-off", !enabled);
   elements.microphoneStatusText.textContent = enabled ? "ON" : "OFF";
+  elements.microphoneStatusCurrent.textContent = enabled ? (state.cameraStartPending ? "準備中" : "現在") : "音声なし";
   const detail = enabled
     ? "現在、マイクはONです。音声を録音します。押すとマイク設定を開きます。"
-    : "現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。";
+    : state.microphoneDecision === "denied"
+      ? "マイクを利用できなかったため、音声なしで録画します。再試行するにはマイク設定でONを選んでください。"
+      : "現在、マイクはOFFです。音声は録音されません。押すとマイク設定を開きます。";
   elements.microphoneStatusDetail.textContent = detail;
   elements.microphoneStatusButton.setAttribute("aria-label", detail);
 }
@@ -241,6 +263,7 @@ function collectSettings() {
     photoQuality: elements.photoQualitySelect.value,
     selfieMirror: elements.selfieMirrorSelect.value,
     microphone: "off",
+    ...(state.microphonePreference === "off" ? { microphonePreference: "off" } : {}),
     videoResolution: elements.videoResolutionSelect.value,
     videoFrameRate: elements.videoFrameRateSelect.value,
     videoQuality: elements.videoQualitySelect.value,
@@ -412,7 +435,7 @@ function updateModeUi() {
   elements.ratioButton.hidden = false;
   elements.shutterButton.classList.toggle("video", !photoMode);
   elements.shutterButton.setAttribute("aria-label", photoMode ? "写真を撮る" : "録画を開始する");
-  elements.permissionCopy.textContent = photoMode ? "写真を運営者へ自動送信しません。マイクと位置情報は使用しません。" : "動画を運営者へ自動送信しません。マイクはONにした場合だけ使用します。";
+  elements.permissionCopy.textContent = photoMode ? "写真を運営者へ自動送信しません。マイクと位置情報は使用しません。" : "動画を運営者へ自動送信しません。動画へ切り替えるとマイクの使用許可を求めます。手動でOFFにした設定は維持します。";
   syncMicrophoneStatus();
   syncRatioButton();
   applyStageRatio();
@@ -421,13 +444,14 @@ function updateModeUi() {
 
 async function setMode(mode) {
   if (state.busy || state.recordingFinalizing || (state.recorder && state.recorder.state !== "inactive") || state.mode === mode) return;
+  prepareVideoMicrophone(mode);
   const active = Boolean(state.stream) || state.cameraStartPending || Boolean(state.cameraTransitioning);
   const reuse = !state.cameraStartPending && window.QuietCameraEnhancements?.canReuseStreamForMode?.(mode) === true;
   if (active && !reuse) window.QuietCameraEnhancements?.beginPreviewTransition();
   state.mode = mode;
   updateModeUi();
   persistCurrentSettings();
-  if (active && !reuse) await startCamera();
+  if (!reuse && (active || mode === "video")) await startCamera();
 }
 
 function cycleTimer() {

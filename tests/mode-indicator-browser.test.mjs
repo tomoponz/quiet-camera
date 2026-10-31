@@ -87,12 +87,12 @@ try{
  Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{__audit.mediaCalls++;throw new Error('Media forbidden');},enumerateDevices:async()=>[],getSupportedConstraints:()=>({}),addEventListener(){}}});
  Object.defineProperty(navigator,'serviceWorker',{value:{register:async()=>({waiting:null,addEventListener(){}}),addEventListener(){}}});
  Object.defineProperty(document,'fullscreenEnabled',{value:false});
- `});await cdp('Page.navigate',{url});await until('document.readyState==="complete" && !!window.QuietCameraEnhancements');await evaluate('saveSettings=()=>__audit.settingsWrites++');
+ `});await cdp('Page.navigate',{url});await until('document.readyState==="complete" && !!window.QuietCameraEnhancements');await evaluate('saveSettings=()=>__audit.settingsWrites++;state.microphonePreference="off";state.microphoneDecision="off";startCamera=async()=>{}');
  const geometry=()=>evaluate(`(()=>{const n=document.querySelector('.mode-switcher'),r=e=>{const b=e.getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(x=>Math.round(x*100)/100)};return {nav:r(n),labels:[r(elements.photoModeButton),r(elements.videoModeButton)],row:r(document.querySelector('.mode-control-row'))}})()`);
  for(const[w,h]of[[320,600],[393,800],[641,360],[1280,800]]){
   await metrics(w,h,w<1000);await evaluate('state.mode="photo";elements.microphoneSelect.value="off";updateModeUi()');await sleep(100);const photo=await geometry();
   await evaluate('elements.videoModeButton.click()');await sleep(250);check('video selector geometry unchanged '+w,await geometry(),photo);
-  check('explicit MIC OFF visible '+w,await evaluate('!elements.microphoneStatusButton.hidden&&elements.microphoneStatusButton.textContent.replace(/\\s/g,"")==="現在MICOFF"'),true);
+  check('explicit MIC OFF visible '+w,await evaluate('!elements.microphoneStatusButton.hidden&&elements.microphoneStatusButton.textContent.replace(/\\s/g,"")==="音声なしMICOFF"'),true);
   check('MIC and selector do not overlap '+w,await evaluate('(()=>{const a=document.querySelector(".mode-switcher").getBoundingClientRect(),b=elements.microphoneStatusButton.getBoundingClientRect();return !(a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)})()'),true);
   await evaluate('elements.microphoneSelect.value="on";syncMicrophoneStatus()');check('MIC ON does not move selector '+w,await geometry(),photo);check('ON state is visible and accessible '+w,await evaluate('elements.microphoneStatusText.textContent==="ON"&&elements.microphoneStatusButton.getAttribute("aria-label").includes("ON")'),true);
   await evaluate('elements.photoModeButton.click()');await sleep(220);check('photo hides MIC without shifting selector '+w,[await geometry(),await evaluate('elements.microphoneStatusButton.hidden')],[photo,true]);
