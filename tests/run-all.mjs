@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {readChildAudit,summarizeMediaAudits} from './media-audit.mjs';
+import {syntaxFiles} from './application-files.mjs';
 const root=path.resolve(import.meta.dirname,'..'),output=path.join(root,'test-results');
 fs.mkdirSync(output,{recursive:true});
 const results=[],mediaAudits=[];
@@ -15,9 +16,10 @@ async function run(args,env={}){
 }
 const suites=fs.readdirSync(import.meta.dirname).filter(f=>f==='validate.mjs'||f.endsWith('.test.cjs'));
 await Promise.all(suites.map(file=>run(['tests/'+file])));
-const syntax=[...fs.readdirSync(root).filter(f=>f.endsWith('.js')),...fs.readdirSync(import.meta.dirname).filter(f=>/\.(cjs|mjs)$/.test(f)).map(f=>'tests/'+f)];
-await Promise.all(syntax.map(file=>run(['--check',file])));
+const syntax=syntaxFiles(root);
+await run(['tests/check-syntax.mjs']);
 const browsers=[
+ ['structure-upgrade-browser.test.mjs','QC_STRUCTURE_UPGRADE_OUTPUT','structure-upgrade'],
  ['mixed-review-browser.test.mjs','QC_MIXED_OUTPUT','mixed-review'],
  ['continuous-capture-browser.test.mjs','QC_CONTINUOUS_CAPTURE_OUTPUT','continuous-capture'],
  ['recording-safety-browser.test.mjs','QC_RECORDING_BROWSER_OUTPUT','recording-safety'],

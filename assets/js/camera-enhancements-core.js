@@ -7,11 +7,6 @@
   Q.APP_VERSION = "2026.10.30.2";
   Q.DEVICE_STORAGE_KEY = "quiet-camera-selected-device";
   Q.MOBILE_QUERY = window.matchMedia("(max-width: 700px)");
-  Q.originalStartCamera = startCamera;
-  Q.originalSwitchCamera = switchCamera;
-  Q.originalUpdateCapabilities = updateCapabilities;
-  Q.originalToggleTorch = toggleTorch;
-  Q.originalOpenGallery = openGallery;
 
   Object.assign(elements, {
     cameraSourceField: document.querySelector("#cameraSourceField"),

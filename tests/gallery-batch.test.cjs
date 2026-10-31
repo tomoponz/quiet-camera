@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { zip, crc32 } = require('../gallery-batch.js');
+const { zip, crc32 } = require('../assets/js/gallery-batch.js');
 (async () => {
   assert.equal(await crc32(new Blob(['123456789'])), 0xcbf43926, 'standard CRC32 vector');
   await assert.rejects(zip([]), /選択/);

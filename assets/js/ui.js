@@ -239,14 +239,8 @@ function renderGallery({ appendFrom = null } = {}) {
   updateGallerySelectionUi();
 }
 
-async function refreshGallery() {
-  revokeGalleryUrls();
-  state.gallery = await listStoredMedia();
-  const validIds = new Set(state.gallery.map((item) => item.id));
-  for (const id of state.selectedGalleryIds) if (!validIds.has(id)) state.selectedGalleryIds.delete(id);
-  updateGalleryButton();
-  await refreshRecoveryNotice().catch((error) => console.warn("Recovery status could not be loaded.", error));
-  if (elements.galleryDialog.open) renderGallery();
+function refreshGallery(options) {
+  return window.QuietCameraEnhancements.refreshPagedGallery(options);
 }
 
 async function refreshRecoveryNotice() {
@@ -308,14 +302,8 @@ async function discardPendingRecordings() {
   }
 }
 
-async function openGallery() {
-  if (elements.galleryButton.dataset.recordingCancel === "true") {
-    if (window.confirm("現在の録画を破棄しますか？")) stopRecording({ cancel: true });
-    return;
-  }
-  await refreshGallery();
-  renderGallery();
-  elements.galleryDialog.showModal();
+function openGallery() {
+  return window.QuietCameraEnhancements.enhancedOpenGallery();
 }
 
 async function deleteSelectedGalleryMedia() { return window.QuietCameraGallery?.deleteSelected(); }
@@ -356,36 +344,8 @@ function mapDisplayPointToSensor(clientX, clientY) {
   return { x, y };
 }
 
-async function tryFocusConstraint(advanced) {
-  try {
-    await state.videoTrack.applyConstraints({ advanced: [advanced] });
-    return true;
-  } catch { return false; }
-}
-
-async function focusAt(clientX, clientY) {
-  if (!state.videoTrack || state.recorder?.state === "recording") return;
-  const rect = elements.video.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
-  const point = mapDisplayPointToSensor(clientX, clientY);
-  const focusModes = Array.isArray(state.capabilities.focusMode) ? state.capabilities.focusMode : [];
-  const attempts = [];
-  if (focusModes.includes("single-shot")) attempts.push({ focusMode: "single-shot", pointsOfInterest: [point] });
-  attempts.push({ pointsOfInterest: [point] });
-  if (focusModes.includes("single-shot")) attempts.push({ focusMode: "single-shot" });
-  if (focusModes.includes("continuous")) attempts.push({ focusMode: "continuous" });
-  attempts.push({ focusMode: "single-shot" }, { focusMode: "continuous" });
-  for (const attempt of attempts) {
-    if (await tryFocusConstraint(attempt)) {
-      showFocusRing(clientX, clientY, "success");
-      return;
-    }
-  }
-  showFocusRing(clientX, clientY, "fallback");
-  if (!focusAt.fallbackNoticeShown) {
-    showToast("このブラウザでは位置指定AFが非公開のため、端末の自動フォーカスを使用します");
-    focusAt.fallbackNoticeShown = true;
-  }
+function focusAt(clientX, clientY) {
+  return window.QuietCameraEnhancements.enhancedFocusAt(clientX, clientY);
 }
 
 function pointerDistance() {
@@ -582,6 +542,3 @@ window.addEventListener("pagehide", () => {
   releaseSelectedMediaUrls();
   revokeGalleryUrls();
 });
-
-registerServiceWorker();
-initializeApp().catch((error) => { console.error(error); showToast("保存済みデータの読み込みに失敗しました"); });

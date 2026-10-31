@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
   const ext = path.extname(file);
   res.setHeader('Content-Type', ({'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'})[ext] || 'application/octet-stream');
-  if (pathname === '/storage.js') { res.end(fixture); return; }
+  if (pathname === '/assets/js/storage.js') { res.end(fixture); return; }
   try { res.end(fs.readFileSync(file)); } catch { res.writeHead(404).end(); }
 });
 server.listen(0, '127.0.0.1');

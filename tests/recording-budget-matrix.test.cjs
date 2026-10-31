@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const q=require('../video.js'),p=q.RECORDING_LIMITS,M=1024*1024,cases=[];
+const q=require('../assets/js/video.js'),p=q.RECORDING_LIMITS,M=1024*1024,cases=[];
 for(const bps of [1500000,3500000,7000000,12000000,16000000,20000000,24000000,28128000])for(const seconds of [1,2,3.4,6.8])for(const multiplier of [.8,1,1.3,1.5,1.7,2,2.2,2.5])for(const nominalMiB of [20,100,512]){
  const nominal=nominalMiB*M,observed=Math.ceil(bps/8*seconds*multiplier),next=Math.ceil(observed*1.5),flush=observed,stop=q.calculateRecordingStopBytes(nominal,bps,observed),final=stop-1+next+flush;
  const initialAvailable=2*(nominal+p.delayedOutputAllowanceBytes)+p.finalizationReserveBytes;

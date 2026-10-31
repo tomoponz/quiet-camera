@@ -9,7 +9,7 @@ const {
   resetRecordingUiAfterStop,
   shouldRestartCameraAfterRecording,
   HARD_RECORDING_LIMIT_BYTES,
-} = require("../video.js");
+} = require("../assets/js/video.js");
 
 const economy1080 = calculateVideoBitsPerSecondFor(1920, 1080, 30, "economy");
 const standard1080 = calculateVideoBitsPerSecondFor(1920, 1080, 30, "standard");

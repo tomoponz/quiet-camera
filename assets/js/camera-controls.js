@@ -287,7 +287,7 @@ if (typeof window !== "undefined") (() => {
   }
 
   Q.enhancedUpdateCapabilities = () => {
-    Q.originalUpdateCapabilities();
+    updateBasicCameraCapabilities();
     const settings = Q.currentVideoSettings();
     elements.exposureControl.hidden = true;
     configureExposureControl(settings);

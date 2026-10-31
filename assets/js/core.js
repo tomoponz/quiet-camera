@@ -312,17 +312,6 @@ function applySavedSettings() {
   elements.gridButton.setAttribute("aria-pressed", String(Boolean(savedSettings.grid)));
 }
 
-function getVideoPreset() {
-  const resolution = elements.videoResolutionSelect.value;
-  const frameRate = elements.videoFrameRateSelect.value;
-  const video = { facingMode: { ideal: state.facingMode } };
-  if (resolution === "720") { video.width = { ideal: 1280 }; video.height = { ideal: 720 }; }
-  else if (resolution === "1080") { video.width = { ideal: 1920 }; video.height = { ideal: 1080 }; }
-  else { video.width = { ideal: 3840 }; video.height = { ideal: 2160 }; }
-  if (frameRate !== "auto") video.frameRate = { ideal: Number(frameRate) };
-  return video;
-}
-
 function stopCamera() {
   if (state.stream) state.stream.getTracks().forEach((track) => track.stop());
   state.stream = null;
@@ -344,7 +333,8 @@ async function requestWakeLock() {
   catch { state.wakeLock = null; }
 }
 
-function updateCapabilities() {
+// This base UI update is shared by the active camera controller.
+function updateBasicCameraCapabilities() {
   state.capabilities = state.videoTrack?.getCapabilities?.() ?? {};
   const settings = state.videoTrack?.getSettings?.() ?? {};
   const zoom = state.capabilities.zoom;
@@ -379,52 +369,14 @@ function updateCapabilities() {
   }
 }
 
-async function startCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    elements.cameraStatus.textContent = "非対応";
-    showToast("このブラウザではカメラを利用できません");
-    return;
-  }
-  if (!window.isSecureContext) {
-    elements.cameraStatus.textContent = "HTTPSが必要";
-    showToast("HTTPSで開いてください");
-    return;
-  }
-  if (state.recorder?.state === "recording") return;
-  stopCamera();
-  elements.cameraStatus.textContent = "起動中…";
-  elements.startButton.disabled = true;
-  const preferredConstraints = { audio: microphoneEnabled() ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false, video: getVideoPreset() };
-  try {
-    try { state.stream = await navigator.mediaDevices.getUserMedia(preferredConstraints); }
-    catch (preferredError) {
-      console.warn("Preferred constraints failed; using fallback.", preferredError);
-      state.stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneEnabled(), video: { facingMode: { ideal: state.facingMode } } });
-    }
-    elements.video.srcObject = state.stream;
-    await elements.video.play();
-    [state.videoTrack] = state.stream.getVideoTracks();
-    const settings = state.videoTrack?.getSettings?.() ?? {};
-    state.isFrontCamera = (settings.facingMode || state.facingMode) === "user";
-    elements.video.classList.toggle("mirrored", state.isFrontCamera);
-    const resolution = settings.width && settings.height ? `${settings.width}×${settings.height}` : state.isFrontCamera ? "前面カメラ" : "背面カメラ";
-    const fps = settings.frameRate ? ` ${Math.round(settings.frameRate)}fps` : "";
-    elements.cameraStatus.textContent = `${resolution}${fps}`;
-    elements.permissionPanel.hidden = true;
-    elements.shutterButton.disabled = false;
-    elements.startButton.disabled = false;
-    updateCapabilities();
-    updateMediaStatus();
-    await requestWakeLock();
-  } catch (error) {
-    console.error(error);
-    elements.cameraStatus.textContent = "許可が必要";
-    elements.startButton.disabled = false;
-    elements.permissionPanel.hidden = false;
-    if (error?.name === "NotAllowedError") showCameraPermissionDialog();
-    else if (error?.name === "NotFoundError") showToast("利用できるカメラが見つかりません");
-    else showToast("カメラを起動できませんでした");
-  }
+// Stable entry points call the active controller from their first use.
+// Event handlers keep these functions; no implementation is replaced later.
+function updateCapabilities() {
+  return window.QuietCameraEnhancements.enhancedUpdateCapabilities();
+}
+
+function startCamera() {
+  return window.QuietCameraEnhancements.enhancedStartCamera();
 }
 
 function setControlsDisabled(disabled) {
@@ -442,10 +394,8 @@ function setControlsDisabled(disabled) {
   if (!elements.torchButton.hidden) elements.torchButton.disabled = disabled || !state.capabilities.torch || Boolean(state.cameraTransitioning);
 }
 
-async function switchCamera() {
-  if (state.busy || state.recorder?.state === "recording") return;
-  state.facingMode = state.facingMode === "environment" ? "user" : "environment";
-  await startCamera();
+function switchCamera() {
+  return window.QuietCameraEnhancements.enhancedSwitchCamera();
 }
 
 function updateModeUi() {
@@ -512,47 +462,16 @@ function toggleGrid() {
   persistCurrentSettings();
 }
 
-async function toggleTorch() {
-  if (!state.videoTrack || !state.capabilities.torch || state.recorder?.state === "recording") return;
-  const nextState = !state.torchEnabled;
-  try {
-    await state.videoTrack.applyConstraints({ advanced: [{ torch: nextState }] });
-    state.torchEnabled = nextState;
-    elements.torchButton.setAttribute("aria-pressed", String(nextState));
-  } catch (error) {
-    console.error(error);
-    showToast("この端末ではライトを変更できません");
-  }
+function toggleTorch() {
+  return window.QuietCameraEnhancements.enhancedToggleTorch();
 }
 
-async function applyZoom(value) {
-  if (!state.videoTrack || !state.capabilities.zoom) return;
-  const zoom = Math.min(state.capabilities.zoom.max, Math.max(state.capabilities.zoom.min, Number(value)));
-  try {
-    await state.videoTrack.applyConstraints({ advanced: [{ zoom }] });
-    state.currentZoom = zoom;
-    elements.zoomRange.value = String(zoom);
-    elements.zoomValue.value = `${zoom.toFixed(1)}×`;
-  } catch (error) {
-    console.error(error);
-    showToast("ズームを変更できませんでした");
-  }
+function applyZoom(value) {
+  return window.QuietCameraEnhancements.enhancedApplyZoom(value);
 }
 
-async function applyExposure(value) {
-  if (!state.videoTrack || !state.capabilities.exposureCompensation) return;
-  const capability = state.capabilities.exposureCompensation;
-  const exposure = Math.min(capability.max, Math.max(capability.min, Number(value)));
-  try {
-    await state.videoTrack.applyConstraints({ advanced: [{ exposureCompensation: exposure }] });
-    state.currentExposure = exposure;
-    elements.exposureRange.value = String(exposure);
-    elements.exposureValue.value = exposure.toFixed(1);
-  } catch (error) {
-    console.error(error);
-    showToast("明るさを変更できませんでした");
-  }
-}
+// The hidden floating exposure control is inactive. Settings use applyExposureIndex.
+function applyExposure() {}
 
 function wait(milliseconds) { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
 async function runCountdown(seconds) {

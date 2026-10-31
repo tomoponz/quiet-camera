@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const model = require("../camera-ratio-model.js");
+const model = require("../assets/js/camera-ratio-model.js");
 
 assert.deepEqual([...model.RATIO_SEQUENCE], ["4:3", "1:1", "16:9"]);
 assert.equal(model.ratioValue("4:3"), 4 / 3);
