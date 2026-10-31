@@ -82,6 +82,14 @@
     const measuredMicWidth=pcControls?Math.max(micWidth,parseFloat(getComputedStyle(microphone).width)||0):micWidth;
     px("--overlay-mic-width",measuredMicWidth);
     px("--overlay-mic-font-size",desiredMicFont*Math.min(1,micTextWidth/Math.max(1,textWidth)));
+    // The upright status label can be wider than "MIC OFF" in Japanese.
+    // Fit it to the button's rotated inline axis without moving the controls.
+    const current=elements.microphoneStatusCurrent,currentFont=getComputedStyle(current);
+    const desiredCurrentFont=rootFont*(pcControls?.75:.65);
+    if(context)context.font=`${currentFont.fontWeight} ${desiredCurrentFont}px ${currentFont.fontFamily}`;
+    const currentWidth=context?.measureText(current.textContent).width||desiredCurrentFont*current.textContent.length;
+    const currentTextWidth=quarter%2?(parseFloat(getComputedStyle(microphone).height)||54)-10:measuredMicWidth-12;
+    current.style.fontSize=`${desiredCurrentFont*Math.min(1,Math.max(1,currentTextWidth)/Math.max(1,currentWidth))}px`;
     px("--overlay-mode-width",Math.max(98,Math.min(240,controlsWidth-2*(measuredMicWidth+6))));
     const reservedMicHeight=Math.max(54,Math.ceil(rootFont*.65*1.05+desiredMicFont*1.05+11));
     const modeHeight=Math.max(54,selector.getBoundingClientRect()[quarter%2?"width":"height"],reservedMicHeight,pcControls?parseFloat(getComputedStyle(microphone).height)||0:0);

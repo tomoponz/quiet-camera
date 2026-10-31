@@ -103,7 +103,8 @@ try {
     if(await evaluate(`document.readyState==='complete' && typeof state !== 'undefined' && !!window.QuietCameraEnhancements && document.querySelector('#settingsResizeHandle') !== null`)) break;
     await new Promise(resolve=>setTimeout(resolve,30));
   }
-  await evaluate(`document.querySelector('#permissionPanel').hidden=true;document.querySelector('.camera-top-controls').inert=false;document.querySelector('#zoomControl').hidden=false;document.querySelector('#cameraVideo').poster='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#30424d"/><path d="M0 960H1080M540 0V1920" stroke="#8da1ad" stroke-width="4"/><text x="540" y="1030" text-anchor="middle" fill="white" font-size="48">MOCK PREVIEW</text></svg>');`);
+  // Geometry fixtures deliberately bypass device acquisition; consent is covered by camera-acquisition.
+  await evaluate(`state.microphonePreference='off';state.microphoneDecision='off';startCamera=async()=>{};document.querySelector('#permissionPanel').hidden=true;document.querySelector('.camera-top-controls').inert=false;document.querySelector('#zoomControl').hidden=false;document.querySelector('#cameraVideo').poster='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#30424d"/><path d="M0 960H1080M540 0V1920" stroke="#8da1ad" stroke-width="4"/><text x="540" y="1030" text-anchor="middle" fill="white" font-size="48">MOCK PREVIEW</text></svg>');`);
   const measure = () => evaluate(`(() => {
     const q=s=>document.querySelector(s), rect=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height,right:b.right,bottom:b.bottom}};
     const stage=rect(q('#cameraStage')), toolbar=rect(q('.camera-top-controls'));

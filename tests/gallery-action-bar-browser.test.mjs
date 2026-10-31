@@ -85,7 +85,13 @@ try {
  await evaluate(`(async()=>{for(let i=0;i<32;i++){const c=document.createElement('canvas');c.width=320;c.height=240;const x=c.getContext('2d');x.fillStyle='hsl('+i*29+' 60% 30%)';x.fillRect(0,0,320,240);x.fillStyle='white';x.font='25px sans-serif';x.fillText('SAMPLE '+i,20,120);const blob=await canvasToBlob(c,'image/png',1);await putMedia({id:'p'+i,kind:'photo',createdAt:1700000000000+i*1000,blob,previewBlob:blob,extension:'png',mimeType:'image/png',meta:'SAMPLE '+i})}await refreshGallery()})()`);
  const settled=async id=>{await until(`document.querySelector('#${id}').open&&!document.querySelector('#${id}').classList.contains('is-settling')`);await sleep(30)};
  const openSheet=async kind=>{if(kind==='gallery')await evaluate('QuietCameraEnhancements.enhancedOpenGallery()');else await evaluate('elements.settingsButton.click()');await settled(kind+'Dialog')};
- const closeSheet=async kind=>{await evaluate(`elements.${kind==='gallery'?'closeGalleryButton':'closeSettingsButton'}.click()`);await until(`!elements.${kind}Dialog.open`);await sleep(40)};
+ // dialog.open changes synchronously; its close event and selection cleanup are
+ // queued separately. A normal reopen must wait for that event, whereas the
+ // explicit rapid-reopen cases below intentionally bypass this helper.
+ const closeSheet=async kind=>{
+  await evaluate(`(async()=>{const dialog=elements.${kind}Dialog;const closed=new Promise(resolve=>dialog.addEventListener('close',resolve,{once:true}));elements.${kind==='gallery'?'closeGalleryButton':'closeSettingsButton'}.click();await closed})()`);
+  await until(`!elements.${kind}Dialog.open`);
+ };
  const bounds=kind=>evaluate(`(()=>{const d=elements.${kind}Dialog,b=d.getBoundingClientRect(),h=document.querySelector('#${kind}ResizeHandle');return{top:b.top,bottom:b.bottom,height:b.height,max:+h.getAttribute('aria-valuemax'),offset:getComputedStyle(d).transform,state:d.dataset.sheetState||null}})()`);
  const list=()=>evaluate(`(()=>{const b=document.querySelector('#gallerySheetBody'),c=document.querySelector('.gallery-card'),r=c.getBoundingClientRect();return{top:r.top,left:r.left,scroll:b.scrollTop,height:b.clientHeight,scrollHeight:b.scrollHeight,summary:elements.gallerySummary.textContent,headerHeight:elements.galleryDialog.querySelector(".gallery-header").getBoundingClientRect().height}})()`);
  const keyboard=async key=>{for(const type of [key==='Escape'?'rawKeyDown':'keyDown','keyUp'])await cdp('Input.dispatchKeyEvent',{type,key,code:key,...(key==='Escape'?{windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}:{})})};
@@ -103,6 +109,7 @@ try {
  for(const [w,h,q,font]of[[393,800,0,16],[320,480,0,16],[800,393,1,16],[800,393,3,16],[641,274,1,32],[641,274,3,32],[393,800,0,32],[320,480,0,32],[270,500,0,16]]){
   await cdp('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:2.75,mobile:true,screenWidth:w,screenHeight:h,screenOrientation:{type:q===3?'landscapeSecondary':q===1?'landscapePrimary':'portraitPrimary',angle:q*90}});await evaluate(`document.documentElement.style.fontSize='${font}px'`);await openSheet('gallery');
   const key=[w,h,q,font].join('-'),initial=await bounds('gallery');check('maximum viewport fit '+key,initial.top>=7.5&&initial.bottom<=h+.5,true);
+  check('normal reopen starts outside selection mode '+key,await evaluate('[elements.galleryDialog.classList.contains("is-selecting"),state.selectedGalleryIds.size,elements.reviewDialog.open,document.querySelector("#gallerySelectionButton").getAttribute("aria-pressed")]'),[false,0,false,'false']);
   for(const position of [0,400,1e9]){
    await evaluate(`document.querySelector('#gallerySheetBody').scrollTop=${position}`);await sleep(30);const before=await list();
    await evaluate('document.querySelector("#gallerySelectionButton").click();document.querySelector(".gallery-open").click()');const selecting=await list();

@@ -192,7 +192,7 @@ try {
   check('candidate loads scripts beneath the project path',await evaluate('Array.from(document.scripts).every(s=>s.src.startsWith(location.origin+"/quiet-camera/assets/js/"))'));
   check('candidate loads styles beneath the project path',await evaluate('Array.from(document.querySelectorAll("link[rel=stylesheet]")).every(s=>s.href.startsWith(location.origin+"/quiet-camera/assets/css/"))'));
   check('candidate retains the worker scope',await evaluate('(async()=>(await navigator.serviceWorker.getRegistration()).scope)()'),details.url);
-  await until('(async()=>(await caches.keys()).includes("quiet-camera-shell-v42"))()');
+  await until('(async()=>(await caches.keys()).includes("quiet-camera-shell-v43"))()');
   const cachesAfter=await evaluate('caches.keys()');
   check('old shell cache is retired after activation',cachesAfter.includes('quiet-camera-shell-v40'),false);
   check('unrelated cache is preserved',cachesAfter.includes('unrelated-application-test'));
